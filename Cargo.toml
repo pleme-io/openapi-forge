@@ -1,0 +1,32 @@
+[package]
+name = "openapi-forge"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.89.0"
+description = "OpenAPI 3.0 parser and query library"
+homepage = "https://github.com/pleme-io/openapi-forge"
+repository = "https://github.com/pleme-io/openapi-forge"
+documentation = "https://docs.rs/openapi-forge"
+readme = "README.md"
+license = "MIT"
+categories = ["parsing", "web-programming"]
+keywords = ["openapi", "swagger", "parser", "codegen"]
+
+[lints.clippy]
+pedantic = "warn"
+
+[dependencies]
+indexmap = { version = "2", features = ["serde"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_yaml = "0.9"
+thiserror = "2"
+
+[dev-dependencies]
+tempfile = "3"
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "z"
+strip = true
