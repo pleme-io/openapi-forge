@@ -476,7 +476,7 @@ impl Spec {
         let raw: OpenApiSpec = if content.trim_start().starts_with('{') {
             serde_json::from_str(content)?
         } else {
-            serde_yaml::from_str(content)?
+            serde_yaml_ng::from_str(content)?
         };
 
         if !raw.openapi.starts_with("3.0") {

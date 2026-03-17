@@ -6,7 +6,7 @@ pub enum ForgeError {
     Io(#[from] std::io::Error),
 
     #[error("failed to parse YAML: {0}")]
-    Yaml(#[from] serde_yaml::Error),
+    Yaml(#[from] serde_yaml_ng::Error),
 
     #[error("failed to parse JSON: {0}")]
     Json(#[from] serde_json::Error),
