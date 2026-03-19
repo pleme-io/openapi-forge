@@ -17,9 +17,11 @@ pedantic = "warn"
 
 [dependencies]
 indexmap = { version = "2", features = ["serde"] }
+sekkei = { git = "https://github.com/pleme-io/sekkei" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 serde_yaml_ng = "0.10"
+takumi = { git = "https://github.com/pleme-io/takumi" }
 thiserror = "2"
 
 [dev-dependencies]

@@ -3,7 +3,7 @@ use std::path::Path;
 use indexmap::IndexMap;
 
 use crate::error::ForgeError;
-use crate::types::{OpenApiSpec, Operation, SchemaObject, SchemaOrRef};
+use crate::types::{OpenApiSpec, Operation, SchemaObject, SchemaOrRef, TypeInfo};
 
 /// The CRUD verb detected from an RPC-style operation path.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -400,34 +400,6 @@ pub struct Field {
     pub enum_values: Option<Vec<String>>,
 }
 
-/// Type information for a schema field.
-#[derive(Debug, Clone, PartialEq)]
-pub enum TypeInfo {
-    String,
-    Integer,
-    Number,
-    Boolean,
-    Array(Box<TypeInfo>),
-    Object(String),
-    Map(Box<TypeInfo>),
-    Any,
-}
-
-impl std::fmt::Display for TypeInfo {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::String => write!(f, "string"),
-            Self::Integer => write!(f, "integer"),
-            Self::Number => write!(f, "number"),
-            Self::Boolean => write!(f, "boolean"),
-            Self::Array(inner) => write!(f, "array<{inner}>"),
-            Self::Object(name) => write!(f, "object<{name}>"),
-            Self::Map(inner) => write!(f, "map<{inner}>"),
-            Self::Any => write!(f, "any"),
-        }
-    }
-}
-
 /// Result of diffing two schemas.
 #[derive(Debug, Clone)]
 pub struct SchemaDiff {
@@ -471,17 +443,13 @@ impl Spec {
     ///
     /// # Errors
     ///
-    /// Returns an error if the string cannot be parsed or is not OpenAPI 3.0.x.
+    /// Returns an error if the string cannot be parsed.
     pub fn from_str(content: &str) -> Result<Self, ForgeError> {
         let raw: OpenApiSpec = if content.trim_start().starts_with('{') {
             serde_json::from_str(content)?
         } else {
             serde_yaml_ng::from_str(content)?
         };
-
-        if !raw.openapi.starts_with("3.0") {
-            return Err(ForgeError::UnsupportedVersion(raw.openapi.clone()));
-        }
 
         Ok(Self { raw })
     }
@@ -526,8 +494,8 @@ impl Spec {
     pub fn schema(&self, name: &str) -> Result<&SchemaObject, ForgeError> {
         self.raw
             .components
-            .schemas
-            .get(name)
+            .as_ref()
+            .and_then(|c| c.schemas.get(name))
             .ok_or_else(|| ForgeError::SchemaNotFound(name.to_string()))
     }
 
@@ -536,10 +504,9 @@ impl Spec {
     pub fn schema_names(&self) -> Vec<&str> {
         self.raw
             .components
-            .schemas
-            .keys()
-            .map(String::as_str)
-            .collect()
+            .as_ref()
+            .map(|c| c.schemas.keys().map(String::as_str).collect())
+            .unwrap_or_default()
     }
 
     /// Resolve fields from a named schema, including type info and required status.
@@ -552,15 +519,23 @@ impl Spec {
         Ok(self.resolve_fields(schema))
     }
 
-    /// Resolve the type info for a `SchemaOrRef`.
+    /// Resolve the type info for a sekkei `Schema`.
+    ///
+    /// Delegates to `takumi::schema_to_field_type` for consistent type resolution.
     #[must_use]
-    pub fn resolve_type(&self, schema_or_ref: &SchemaOrRef) -> TypeInfo {
+    pub fn resolve_type(&self, schema: &SchemaObject) -> TypeInfo {
+        takumi::schema_to_field_type(schema)
+    }
+
+    /// Resolve the type info for a `SchemaOrRef` adapter.
+    #[must_use]
+    pub fn resolve_schema_or_ref_type(&self, schema_or_ref: &SchemaOrRef) -> TypeInfo {
         match schema_or_ref {
             SchemaOrRef::Ref { ref_path } => {
                 let name = ref_path.rsplit('/').next().unwrap_or("Unknown");
                 TypeInfo::Object(name.to_string())
             }
-            SchemaOrRef::Schema(schema) => self.type_from_schema(schema),
+            SchemaOrRef::Schema(schema) => takumi::schema_to_field_type(schema),
         }
     }
 
@@ -669,53 +644,44 @@ impl Spec {
     ) -> Vec<Field> {
         let mut fields = Vec::new();
 
-        // Handle allOf by merging properties from all referenced schemas
-        if let Some(all_of) = &schema.all_of {
-            for item in all_of {
-                match item {
-                    SchemaOrRef::Ref { ref_path } => {
-                        if let Some(name) = ref_path.rsplit('/').next() {
-                            // Prevent infinite recursion on circular refs
-                            if !visited.contains(&name.to_string()) {
-                                visited.push(name.to_string());
-                                if let Ok(referenced) = self.schema(name) {
-                                    fields
-                                        .extend(self.resolve_fields_recursive(referenced, visited));
-                                }
-                            }
+        // Handle allOf by merging properties from all referenced schemas.
+        // sekkei represents allOf as Vec<Schema> where each item may have a ref_path.
+        for item in &schema.all_of {
+            if let Some(ref_path) = &item.ref_path {
+                // This is a $ref inside allOf
+                if let Some(name) = ref_path.rsplit('/').next() {
+                    // Prevent infinite recursion on circular refs
+                    if !visited.contains(&name.to_string()) {
+                        visited.push(name.to_string());
+                        if let Ok(referenced) = self.schema(name) {
+                            fields.extend(self.resolve_fields_recursive(referenced, visited));
                         }
                     }
-                    SchemaOrRef::Schema(s) => {
-                        fields.extend(self.resolve_fields_recursive(s, visited));
-                    }
                 }
+            } else {
+                // Inline schema inside allOf
+                fields.extend(self.resolve_fields_recursive(item, visited));
             }
         }
 
+        // sekkei properties are BTreeMap<String, Schema> (flat, not SchemaOrRef enum)
         for (name, prop) in &schema.properties {
             let required = schema.required.contains(name);
-            let type_info = self.resolve_type(prop);
-            let (description, default, format, enum_values) = match prop {
-                SchemaOrRef::Schema(s) => {
-                    let ev = s.enum_values.as_ref().map(|vals| {
-                        vals.iter()
-                            .filter_map(|v| match v {
-                                serde_json::Value::String(s) => Some(s.clone()),
-                                other => Some(other.to_string()),
-                            })
-                            .collect()
-                    });
-                    (
-                        s.description.clone(),
-                        s.default.clone(),
-                        s.format.clone(),
-                        ev,
-                    )
-                }
-                SchemaOrRef::Ref { .. } => (None, None, None, None),
-            };
+            let type_info = takumi::schema_to_field_type(prop);
 
-            // Avoid duplicates from allOf merging — last definition wins
+            let description = prop.description.clone();
+            let default = prop.default.clone();
+            let format = prop.format.clone();
+            let enum_values = prop.enum_values.as_ref().map(|vals| {
+                vals.iter()
+                    .filter_map(|v| match v {
+                        serde_json::Value::String(s) => Some(s.clone()),
+                        other => Some(other.to_string()),
+                    })
+                    .collect()
+            });
+
+            // Avoid duplicates from allOf merging -- last definition wins
             fields.retain(|f: &Field| f.name != *name);
 
             fields.push(Field {
@@ -732,36 +698,16 @@ impl Spec {
         fields
     }
 
-    fn type_from_schema(&self, schema: &SchemaObject) -> TypeInfo {
-        match schema.schema_type.as_deref() {
-            Some("string") => TypeInfo::String,
-            Some("integer") => TypeInfo::Integer,
-            Some("number") => TypeInfo::Number,
-            Some("boolean") => TypeInfo::Boolean,
-            Some("array") => {
-                let inner = schema
-                    .items
-                    .as_ref()
-                    .map_or(TypeInfo::Any, |items| self.resolve_type(items));
-                TypeInfo::Array(Box::new(inner))
-            }
-            Some("object") => {
-                if let Some(additional) = &schema.additional_properties {
-                    let inner = self.resolve_type(additional);
-                    TypeInfo::Map(Box::new(inner))
-                } else {
-                    TypeInfo::Object("inline".to_string())
-                }
-            }
-            _ => TypeInfo::Any,
-        }
-    }
-
     fn extract_request_ref(op: &Operation) -> Option<String> {
         let body = op.request_body.as_ref()?;
         let media = body.content.get("application/json")?;
         let schema = media.schema.as_ref()?;
-        schema.ref_name().map(String::from)
+        // sekkei Schema uses ref_path field directly
+        schema
+            .ref_path
+            .as_ref()
+            .and_then(|r| r.rsplit('/').next())
+            .map(String::from)
     }
 
     fn extract_response_ref(op: &Operation) -> Option<String> {
@@ -771,9 +717,14 @@ impl Spec {
             .get("200")
             .or_else(|| op.responses.get("201"))
             .or_else(|| op.responses.get("default"))?;
-        let media = response.content.get("application/json")?;
+        let content = response.content.as_ref()?;
+        let media = content.get("application/json")?;
         let schema = media.schema.as_ref()?;
-        schema.ref_name().map(String::from)
+        schema
+            .ref_path
+            .as_ref()
+            .and_then(|r| r.rsplit('/').next())
+            .map(String::from)
     }
 }
 
@@ -1043,10 +994,8 @@ components:
     }
 
     #[test]
-    fn reject_openapi_2() {
-        let spec_str =
-            r#"{"swagger": "2.0", "info": {"title": "test", "version": "1"}, "paths": {}}"#;
-        // This will either fail parsing (no "openapi" field) or version check
+    fn reject_invalid_content() {
+        let spec_str = "this is definitely not valid yaml or json {{{{";
         let result = Spec::from_str(spec_str);
         assert!(result.is_err());
     }
@@ -1697,5 +1646,43 @@ components:
         // Verify at least one group has a create operation
         let has_create = groups.iter().any(|g| g.create.is_some());
         assert!(has_create, "at least one group should have a create");
+    }
+
+    // --- TypeInfo (FieldType) tests for enum variant ---
+
+    #[test]
+    fn type_info_enum_variant_from_takumi() {
+        // Verify that takumi::FieldType::Enum is available through our TypeInfo alias
+        let enum_type = TypeInfo::Enum {
+            values: vec!["a".to_string(), "b".to_string()],
+            underlying: Box::new(TypeInfo::String),
+        };
+        assert_eq!(
+            enum_type,
+            TypeInfo::Enum {
+                values: vec!["a".to_string(), "b".to_string()],
+                underlying: Box::new(TypeInfo::String),
+            }
+        );
+    }
+
+    #[test]
+    fn resolve_type_delegates_to_takumi() {
+        let spec = Spec::from_str(ENUM_SPEC).expect("parse");
+        let schema = spec.schema("AccessPermission").expect("schema");
+        let perm_prop = &schema.properties["permission"];
+        let type_info = spec.resolve_type(perm_prop);
+        // takumi resolves string enums as FieldType::Enum
+        assert_eq!(
+            type_info,
+            TypeInfo::Enum {
+                values: vec![
+                    "read".to_string(),
+                    "write".to_string(),
+                    "admin".to_string()
+                ],
+                underlying: Box::new(TypeInfo::String),
+            }
+        );
     }
 }

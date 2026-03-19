@@ -1,131 +1,20 @@
-use indexmap::IndexMap;
-use serde::{Deserialize, Serialize};
+//! OpenAPI types -- delegated to sekkei for canonical definitions,
+//! with a compatibility `SchemaOrRef` adapter for openapi-forge consumers.
 
-/// Represents an OpenAPI 3.0 specification.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct OpenApiSpec {
-    pub openapi: String,
-    #[serde(default)]
-    pub info: Info,
-    #[serde(default)]
-    pub servers: Vec<Server>,
-    #[serde(default)]
-    pub paths: IndexMap<String, PathItem>,
-    #[serde(default)]
-    pub components: Components,
-}
+pub use sekkei::{Components, OpenApiSpec, Operation, PathItem};
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct Info {
-    #[serde(default)]
-    pub title: String,
-    #[serde(default)]
-    pub version: String,
-    #[serde(default)]
-    pub description: Option<String>,
-    #[serde(default)]
-    pub contact: Option<Contact>,
-}
+// Re-export takumi's FieldType as TypeInfo for backward compatibility.
+pub use takumi::FieldType as TypeInfo;
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct Contact {
-    #[serde(default)]
-    pub email: Option<String>,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct Server {
-    pub url: String,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct PathItem {
-    #[serde(default)]
-    pub get: Option<Operation>,
-    #[serde(default)]
-    pub post: Option<Operation>,
-    #[serde(default)]
-    pub put: Option<Operation>,
-    #[serde(default)]
-    pub delete: Option<Operation>,
-    #[serde(default)]
-    pub patch: Option<Operation>,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Operation {
-    #[serde(default)]
-    pub operation_id: Option<String>,
-    #[serde(default)]
-    pub summary: Option<String>,
-    #[serde(default)]
-    pub description: Option<String>,
-    #[serde(default)]
-    pub tags: Vec<String>,
-    #[serde(default)]
-    pub request_body: Option<RequestBody>,
-    #[serde(default)]
-    pub responses: IndexMap<String, Response>,
-    #[serde(default)]
-    pub parameters: Vec<Parameter>,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct RequestBody {
-    #[serde(default)]
-    pub required: Option<bool>,
-    #[serde(default)]
-    pub content: IndexMap<String, MediaType>,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct MediaType {
-    #[serde(default)]
-    pub schema: Option<SchemaOrRef>,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct Response {
-    #[serde(default)]
-    pub description: Option<String>,
-    #[serde(default)]
-    pub content: IndexMap<String, MediaType>,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct Parameter {
-    #[serde(default)]
-    pub name: String,
-    #[serde(default, rename = "in")]
-    pub location: String,
-    #[serde(default)]
-    pub required: Option<bool>,
-    #[serde(default)]
-    pub schema: Option<SchemaOrRef>,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct Components {
-    #[serde(default)]
-    pub schemas: IndexMap<String, SchemaObject>,
-}
-
-/// A schema that can be either an inline object or a `$ref`.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(untagged)]
+/// Adapter: convert sekkei's flat `Schema` (with optional `ref_path`) to the
+/// `SchemaOrRef` enum pattern used by openapi-forge consumers.
+///
+/// This preserves API compatibility for code that pattern-matches on
+/// `SchemaOrRef::Ref` vs `SchemaOrRef::Schema`.
+#[derive(Debug, Clone)]
 pub enum SchemaOrRef {
-    Ref {
-        #[serde(rename = "$ref")]
-        ref_path: String,
-    },
-    Schema(Box<SchemaObject>),
-}
-
-impl Default for SchemaOrRef {
-    fn default() -> Self {
-        Self::Schema(Box::default())
-    }
+    Ref { ref_path: String },
+    Schema(Box<sekkei::Schema>),
 }
 
 impl SchemaOrRef {
@@ -137,36 +26,22 @@ impl SchemaOrRef {
             Self::Schema(_) => None,
         }
     }
+
+    /// Convert from a sekkei `Schema`.
+    ///
+    /// If the schema has a `ref_path`, it becomes `SchemaOrRef::Ref`;
+    /// otherwise it becomes `SchemaOrRef::Schema`.
+    #[must_use]
+    pub fn from_schema(schema: &sekkei::Schema) -> Self {
+        if let Some(ref_path) = &schema.ref_path {
+            Self::Ref {
+                ref_path: ref_path.clone(),
+            }
+        } else {
+            Self::Schema(Box::new(schema.clone()))
+        }
+    }
 }
 
-/// An OpenAPI schema object.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SchemaObject {
-    #[serde(default, rename = "type")]
-    pub schema_type: Option<String>,
-    #[serde(default)]
-    pub format: Option<String>,
-    #[serde(default)]
-    pub description: Option<String>,
-    #[serde(default)]
-    pub properties: IndexMap<String, SchemaOrRef>,
-    #[serde(default)]
-    pub required: Vec<String>,
-    #[serde(default)]
-    pub items: Option<Box<SchemaOrRef>>,
-    #[serde(default, rename = "enum")]
-    pub enum_values: Option<Vec<serde_json::Value>>,
-    #[serde(default)]
-    pub default: Option<serde_json::Value>,
-    #[serde(default, rename = "allOf")]
-    pub all_of: Option<Vec<SchemaOrRef>>,
-    #[serde(default, rename = "oneOf")]
-    pub one_of: Option<Vec<SchemaOrRef>>,
-    #[serde(default, rename = "anyOf")]
-    pub any_of: Option<Vec<SchemaOrRef>>,
-    #[serde(default, rename = "additionalProperties")]
-    pub additional_properties: Option<Box<SchemaOrRef>>,
-    #[serde(default, rename = "x-go-name")]
-    pub x_go_name: Option<String>,
-}
+/// Alias: `SchemaObject` is now `sekkei::Schema`.
+pub type SchemaObject = sekkei::Schema;

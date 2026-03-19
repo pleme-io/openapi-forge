@@ -147,9 +147,11 @@ name = "openapi-forge"
 version = "0.1.0"
 dependencies = [
  "indexmap",
+ "sekkei",
  "serde",
  "serde_json",
  "serde_yaml_ng",
+ "takumi",
  "tempfile",
  "thiserror",
 ]
@@ -206,6 +208,17 @@ name = "ryu"
 version = "1.0.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9774ba4a74de5f7b1c1451ed6cd5285a32eddb5cccb8cc655a4e50009e06477f"
+
+[[package]]
+name = "sekkei"
+version = "0.1.0"
+source = "git+https://github.com/pleme-io/sekkei#7902f1c5b2f9c82469e87fd6e87aeae82e16e2f6"
+dependencies = [
+ "anyhow",
+ "serde",
+ "serde_json",
+ "serde_yaml_ng",
+]
 
 [[package]]
 name = "semver"
@@ -278,6 +291,18 @@ dependencies = [
  "proc-macro2",
  "quote",
  "unicode-ident",
+]
+
+[[package]]
+name = "takumi"
+version = "0.1.0"
+source = "git+https://github.com/pleme-io/takumi#5c8bd603595f9e8fc9c1180f787148fceb754baa"
+dependencies = [
+ "anyhow",
+ "indexmap",
+ "sekkei",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
