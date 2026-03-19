@@ -2,110 +2,44 @@
   description = "openapi-forge — OpenAPI 3.0 parser and query library";
 
   inputs = {
-    nixpkgs.url = "github:nixos/nixpkgs?ref=nixos-unstable";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.11";
     substrate = {
       url = "github:pleme-io/substrate";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    crate2nix = {
+      url = "github:nix-community/crate2nix";
+      flake = false;
+    };
+    fenix = {
+      url = "github:nix-community/fenix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+    devenv = {
+      url = "github:cachix/devenv";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
-  outputs =
-    {
-      self,
-      nixpkgs,
-      substrate,
-      ...
-    }:
+  outputs = { nixpkgs, substrate, crate2nix, fenix, devenv, ... }:
     let
-      system = "aarch64-darwin";
-      pkgs = import nixpkgs { inherit system; };
+      systems = [ "aarch64-darwin" "x86_64-linux" "aarch64-linux" ];
 
-      props = builtins.fromTOML (builtins.readFile ./Cargo.toml);
-      version = props.package.version;
-      pname = "openapi-forge";
-
-      package = pkgs.rustPlatform.buildRustPackage {
-        inherit pname version;
-        src = pkgs.lib.cleanSource ./.;
-        cargoLock.lockFile = ./Cargo.lock;
-        doCheck = true;
-        meta = {
-          description = props.package.description;
-          homepage = props.package.homepage;
-          license = pkgs.lib.licenses.mit;
-        };
-      };
-
-      mkApp = name: script: {
-        type = "app";
-        program = "${pkgs.writeShellScriptBin name script}/bin/${name}";
-      };
-    in
-    {
-      packages.${system} = {
-        openapi-forge = package;
-        default = package;
-      };
-
-      overlays.default = final: prev: {
-        openapi-forge = self.packages.${final.system}.default;
-      };
-
-      devShells.${system}.default = pkgs.mkShellNoCC {
-        packages = [
-          pkgs.rustc
-          pkgs.cargo
-          pkgs.rust-analyzer
-          pkgs.clippy
-          pkgs.rustfmt
-        ];
-      };
-
-      apps.${system} = {
-        check-all = mkApp "check-all" ''
-          set -euo pipefail
-          echo "=> cargo fmt --check"
-          cargo fmt --check
-          echo "=> cargo clippy"
-          cargo clippy -- -W clippy::pedantic
-          echo "=> cargo test"
-          cargo test
-          echo "done: all checks passed"
-        '';
-        test = mkApp "test" ''
-          set -euo pipefail
-          cargo test
-        '';
-        bump = mkApp "bump" ''
-          set -euo pipefail
-          LEVEL=''${1:-patch}
-          CURRENT=$(grep '^version' Cargo.toml | head -1 | sed 's/.*"\(.*\)"/\1/')
-          IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT"
-          case "$LEVEL" in
-            major) MAJOR=$((MAJOR + 1)); MINOR=0; PATCH=0 ;;
-            minor) MINOR=$((MINOR + 1)); PATCH=0 ;;
-            patch) PATCH=$((PATCH + 1)) ;;
-            *) echo "Usage: bump [major|minor|patch]"; exit 1 ;;
-          esac
-          NEW="$MAJOR.$MINOR.$PATCH"
-          sed -i "" "s/^version = \"$CURRENT\"/version = \"$NEW\"/" Cargo.toml
-          cargo check 2>/dev/null || true
-          git add Cargo.toml Cargo.lock
-          git commit -m "bump: v$NEW"
-          git tag "v$NEW"
-          echo "bumped: v$CURRENT → v$NEW"
-        '';
-        publish = mkApp "publish" ''
-          set -euo pipefail
-          cargo publish
-        '';
-        release = mkApp "release" ''
-          set -euo pipefail
-          nix run .#bump -- "''${1:-patch}"
-          nix run .#publish
-        '';
-      };
-
-      formatter.${system} = pkgs.nixfmt-tree;
+      forEachSystem = f: nixpkgs.lib.genAttrs systems (system:
+        let
+          rustLibrary = import "${substrate}/lib/rust-library.nix" {
+            inherit system nixpkgs crate2nix devenv;
+            nixLib = substrate;
+          };
+          result = rustLibrary {
+            name = "openapi-forge";
+            src = ./.;
+          };
+        in f result
+      );
+    in {
+      packages = forEachSystem (r: r.packages);
+      devShells = forEachSystem (r: r.devShells);
+      apps = forEachSystem (r: r.apps);
     };
 }
