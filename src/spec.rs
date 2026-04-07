@@ -9,10 +9,15 @@ use crate::types::{OpenApiSpec, Operation, SchemaObject, SchemaOrRef, TypeInfo};
 /// The CRUD verb detected from an RPC-style operation path.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RpcCrudVerb {
+    /// Resource creation (e.g. `create-*`, `add-*`).
     Create,
+    /// Resource retrieval (e.g. `get-*`, `describe-*`).
     Read,
+    /// Resource mutation (e.g. `update-*`).
     Update,
+    /// Resource removal (e.g. `delete-*`, `remove-*`).
     Delete,
+    /// Collection listing (e.g. `list-*`).
     List,
 }
 
@@ -380,52 +385,79 @@ pub struct Spec {
 /// A resolved endpoint with its request/response schema names.
 #[derive(Debug, Clone)]
 pub struct Endpoint {
+    /// The URL path (e.g. `/create-secret`).
     pub path: String,
+    /// The HTTP method in lowercase (e.g. `post`, `get`).
     pub method: String,
+    /// The `operationId` declared in the spec, if any.
     pub operation_id: Option<String>,
+    /// A human-readable summary from the spec.
     pub summary: Option<String>,
+    /// Tags associated with this operation.
     pub tags: Vec<String>,
+    /// The schema name extracted from the request body `$ref`, if present.
     pub request_schema_ref: Option<String>,
+    /// The schema name extracted from the response `$ref`, if present.
     pub response_schema_ref: Option<String>,
 }
 
-/// A resolved field from a schema.
+/// A resolved field from a component schema.
 #[derive(Debug, Clone)]
 pub struct Field {
+    /// Property name as declared in the schema.
     pub name: String,
+    /// Resolved type (delegated to `takumi`).
     pub type_info: TypeInfo,
+    /// Whether the field is listed in the schema's `required` array.
     pub required: bool,
+    /// The `description` annotation, if any.
     pub description: Option<String>,
+    /// The `default` value, if any.
     pub default: Option<serde_json::Value>,
+    /// The `format` annotation (e.g. `date-time`, `int32`).
     pub format: Option<String>,
+    /// Allowed values when the field declares an `enum` constraint.
     pub enum_values: Option<Vec<String>>,
 }
 
-/// Result of diffing two schemas.
+/// Result of diffing two schemas by field name.
 #[derive(Debug, Clone)]
 pub struct SchemaDiff {
+    /// Field names present in schema B but absent from schema A.
     pub added: Vec<String>,
+    /// Field names present in schema A but absent from schema B.
     pub removed: Vec<String>,
+    /// Fields present in both but with different type or required status.
     pub changed: Vec<FieldChange>,
 }
 
-/// A field that changed between two schema versions.
+/// A field whose type or required status changed between two schema versions.
 #[derive(Debug, Clone)]
 pub struct FieldChange {
+    /// The field name.
     pub name: String,
+    /// The type in the first (old) schema.
     pub old_type: TypeInfo,
+    /// The type in the second (new) schema.
     pub new_type: TypeInfo,
+    /// Whether the `required` status differs between the two schemas.
     pub required_changed: bool,
 }
 
-/// A group of related CRUD endpoints.
+/// A group of related CRUD endpoints sharing a common resource name.
 #[derive(Debug, Clone)]
 pub struct CrudGroup {
+    /// The normalised resource name that ties these endpoints together.
     pub base_name: String,
+    /// The endpoint that creates this resource, if detected.
     pub create: Option<Endpoint>,
+    /// The endpoint that reads / retrieves this resource, if detected.
     pub read: Option<Endpoint>,
+    /// The endpoint that updates this resource, if detected.
     pub update: Option<Endpoint>,
+    /// The endpoint that deletes this resource, if detected.
     pub delete: Option<Endpoint>,
+    /// The endpoint that lists instances of this resource, if detected.
     pub list: Option<Endpoint>,
 }
 

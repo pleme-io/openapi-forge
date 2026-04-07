@@ -1,22 +1,29 @@
 use thiserror::Error;
 
+/// Errors that can occur when loading, parsing, or querying an `OpenAPI` spec.
 #[derive(Debug, Error)]
 pub enum ForgeError {
+    /// An I/O error occurred while reading the spec file from disk.
     #[error("failed to read spec file: {0}")]
     Io(#[from] std::io::Error),
 
+    /// The spec content could not be parsed as valid YAML.
     #[error("failed to parse YAML: {0}")]
     Yaml(#[from] serde_yaml_ng::Error),
 
+    /// The spec content could not be parsed as valid JSON.
     #[error("failed to parse JSON: {0}")]
     Json(#[from] serde_json::Error),
 
+    /// A `$ref` pointer could not be resolved within the spec.
     #[error("unresolved $ref: {0}")]
     UnresolvedRef(String),
 
+    /// A referenced schema name does not exist in `components/schemas`.
     #[error("schema not found: {0}")]
     SchemaNotFound(String),
 
+    /// The spec declares a version other than 3.0.x.
     #[error("unsupported spec version: {0} (expected 3.0.x)")]
     UnsupportedVersion(String),
 }
