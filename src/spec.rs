@@ -485,6 +485,29 @@ pub struct CrudGroup {
     pub list: Option<Endpoint>,
 }
 
+impl CrudGroup {
+    /// Returns the number of CRUD slots that have been populated.
+    #[must_use]
+    pub fn endpoint_count(&self) -> usize {
+        [
+            self.create.is_some(),
+            self.read.is_some(),
+            self.update.is_some(),
+            self.delete.is_some(),
+            self.list.is_some(),
+        ]
+        .iter()
+        .filter(|&&v| v)
+        .count()
+    }
+
+    /// Returns `true` if all five CRUD+List slots are populated.
+    #[must_use]
+    pub fn is_complete(&self) -> bool {
+        self.endpoint_count() == 5
+    }
+}
+
 impl Spec {
     /// Load an `OpenAPI` spec from a YAML or JSON file.
     ///
@@ -2824,6 +2847,61 @@ components:
         let group_cloned = group.clone();
         assert_eq!(group_cloned.base_name, "test");
         let _ = format!("{group:?}");
+    }
+
+    // ========================================================================
+    // CrudGroup helpers
+    // ========================================================================
+
+    #[test]
+    fn crud_group_endpoint_count_empty() {
+        let group = CrudGroup::default();
+        assert_eq!(group.endpoint_count(), 0);
+        assert!(!group.is_complete());
+    }
+
+    #[test]
+    fn crud_group_endpoint_count_partial() {
+        let ep = Endpoint {
+            path: "/test".to_string(),
+            method: "post".to_string(),
+            operation_id: None,
+            summary: None,
+            tags: vec![],
+            request_schema_ref: None,
+            response_schema_ref: None,
+        };
+        let group = CrudGroup {
+            base_name: "test".to_string(),
+            create: Some(ep.clone()),
+            read: Some(ep),
+            ..CrudGroup::default()
+        };
+        assert_eq!(group.endpoint_count(), 2);
+        assert!(!group.is_complete());
+    }
+
+    #[test]
+    fn crud_group_is_complete() {
+        let ep = Endpoint {
+            path: "/test".to_string(),
+            method: "post".to_string(),
+            operation_id: None,
+            summary: None,
+            tags: vec![],
+            request_schema_ref: None,
+            response_schema_ref: None,
+        };
+        let group = CrudGroup {
+            base_name: "test".to_string(),
+            create: Some(ep.clone()),
+            read: Some(ep.clone()),
+            update: Some(ep.clone()),
+            delete: Some(ep.clone()),
+            list: Some(ep),
+        };
+        assert!(group.is_complete());
+        assert_eq!(group.endpoint_count(), 5);
     }
 
     // ========================================================================
