@@ -777,15 +777,18 @@ impl Spec {
         fields
     }
 
-    fn extract_request_ref(op: &Operation) -> Option<String> {
-        let body = op.request_body.as_ref()?;
-        let media = body.content.get("application/json")?;
-        let schema = media.schema.as_ref()?;
+    fn schema_ref_name(schema: &SchemaObject) -> Option<String> {
         schema
             .ref_path
             .as_ref()
             .and_then(|r| ref_name_from_path(r))
             .map(String::from)
+    }
+
+    fn extract_request_ref(op: &Operation) -> Option<String> {
+        let body = op.request_body.as_ref()?;
+        let media = body.content.get("application/json")?;
+        Self::schema_ref_name(media.schema.as_ref()?)
     }
 
     fn extract_response_ref(op: &Operation) -> Option<String> {
@@ -796,12 +799,7 @@ impl Spec {
             .or_else(|| op.responses.get("default"))?;
         let content = response.content.as_ref()?;
         let media = content.get("application/json")?;
-        let schema = media.schema.as_ref()?;
-        schema
-            .ref_path
-            .as_ref()
-            .and_then(|r| ref_name_from_path(r))
-            .map(String::from)
+        Self::schema_ref_name(media.schema.as_ref()?)
     }
 }
 
