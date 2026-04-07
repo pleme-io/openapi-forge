@@ -33,7 +33,14 @@ impl SchemaOrRef {
     /// If the schema has a `ref_path`, it becomes `SchemaOrRef::Ref`;
     /// otherwise it becomes `SchemaOrRef::Schema`.
     #[must_use]
+    #[deprecated(since = "0.2.0", note = "use `SchemaOrRef::from(schema)` instead")]
     pub fn from_schema(schema: &sekkei::Schema) -> Self {
+        Self::from(schema)
+    }
+}
+
+impl From<&sekkei::Schema> for SchemaOrRef {
+    fn from(schema: &sekkei::Schema) -> Self {
         if let Some(ref_path) = &schema.ref_path {
             Self::Ref {
                 ref_path: ref_path.clone(),
@@ -83,6 +90,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(deprecated)]
     fn from_schema_with_ref_path_produces_ref_variant() {
         let schema = sekkei::Schema {
             ref_path: Some("#/components/schemas/Bar".to_string()),
@@ -98,6 +106,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(deprecated)]
     fn from_schema_without_ref_path_produces_schema_variant() {
         let schema = sekkei::Schema::default();
         let sor = SchemaOrRef::from_schema(&schema);
@@ -105,6 +114,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(deprecated)]
     fn from_schema_preserves_schema_type() {
         let schema = sekkei::Schema {
             schema_type: Some("string".to_string()),
@@ -146,5 +156,33 @@ mod tests {
             ref_path: "a/b/c/d/e/DeepName".to_string(),
         };
         assert_eq!(sor.ref_name(), Some("DeepName"));
+    }
+
+    #[test]
+    fn from_trait_ref_variant() {
+        let schema = sekkei::Schema {
+            ref_path: Some("#/components/schemas/Baz".to_string()),
+            ..sekkei::Schema::default()
+        };
+        let sor = SchemaOrRef::from(&schema);
+        assert_eq!(sor.ref_name(), Some("Baz"));
+    }
+
+    #[test]
+    fn from_trait_schema_variant() {
+        let schema = sekkei::Schema::default();
+        let sor = SchemaOrRef::from(&schema);
+        assert!(matches!(sor, SchemaOrRef::Schema(_)));
+    }
+
+    #[test]
+    #[allow(deprecated)]
+    fn schema_or_ref_from_schema_ref_name_round_trip() {
+        let schema = sekkei::Schema {
+            ref_path: Some("#/components/schemas/RoundTrip".to_string()),
+            ..sekkei::Schema::default()
+        };
+        let sor = SchemaOrRef::from_schema(&schema);
+        assert_eq!(sor.ref_name(), Some("RoundTrip"));
     }
 }

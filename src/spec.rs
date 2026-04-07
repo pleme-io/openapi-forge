@@ -3528,6 +3528,7 @@ components:
     // ========================================================================
 
     #[test]
+    #[allow(deprecated)]
     fn schema_or_ref_from_schema_ref_name_round_trip() {
         let schema = sekkei::Schema {
             ref_path: Some("#/components/schemas/Test".to_string()),
