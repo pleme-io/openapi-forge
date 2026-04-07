@@ -409,7 +409,7 @@ pub struct Spec {
 }
 
 /// A resolved endpoint with its request/response schema names.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Endpoint {
     /// The URL path (e.g. `/create-secret`).
     pub path: String,
@@ -428,7 +428,7 @@ pub struct Endpoint {
 }
 
 /// A resolved field from a component schema.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Field {
     /// Property name as declared in the schema.
     pub name: String,
@@ -447,7 +447,7 @@ pub struct Field {
 }
 
 /// Result of diffing two schemas by field name.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct SchemaDiff {
     /// Field names present in schema B but absent from schema A.
     pub added: Vec<String>,
@@ -458,7 +458,7 @@ pub struct SchemaDiff {
 }
 
 /// A field whose type or required status changed between two schema versions.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct FieldChange {
     /// The field name.
     pub name: String,
@@ -471,7 +471,7 @@ pub struct FieldChange {
 }
 
 /// A group of related CRUD endpoints sharing a common resource name.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct CrudGroup {
     /// The normalised resource name that ties these endpoints together.
     pub base_name: String,
