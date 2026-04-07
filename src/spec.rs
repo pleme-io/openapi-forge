@@ -368,11 +368,7 @@ impl RpcCrudGrouper {
                     .entry(group_name.clone())
                     .or_insert_with(|| CrudGroup {
                         base_name: group_name,
-                        create: None,
-                        read: None,
-                        update: None,
-                        delete: None,
-                        list: None,
+                        ..CrudGroup::default()
                     });
 
                 match verb {
@@ -475,7 +471,7 @@ pub struct FieldChange {
 }
 
 /// A group of related CRUD endpoints sharing a common resource name.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct CrudGroup {
     /// The normalised resource name that ties these endpoints together.
     pub base_name: String,
@@ -670,11 +666,7 @@ impl Spec {
 
             let group = groups.entry(base.clone()).or_insert_with(|| CrudGroup {
                 base_name: base,
-                create: None,
-                read: None,
-                update: None,
-                delete: None,
-                list: None,
+                ..CrudGroup::default()
             });
 
             match verb {
