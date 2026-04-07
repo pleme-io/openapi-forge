@@ -739,6 +739,7 @@ impl FromStr for Spec {
     }
 }
 
+#[derive(Clone, Copy)]
 enum CrudVerb {
     Create,
     Read,
@@ -763,7 +764,7 @@ fn detect_crud_verb(operation_id: &str) -> (CrudVerb, String) {
         ("list", CrudVerb::List),
     ];
 
-    for (prefix, verb) in prefixes {
+    for &(prefix, verb) in prefixes {
         if let Some(base) = normalized.strip_prefix(prefix) {
             let original_base = strip_verb_prefix(operation_id);
             let name = if original_base.is_empty() {
@@ -771,17 +772,7 @@ fn detect_crud_verb(operation_id: &str) -> (CrudVerb, String) {
             } else {
                 original_base
             };
-            return (
-                match verb {
-                    CrudVerb::Create => CrudVerb::Create,
-                    CrudVerb::Read => CrudVerb::Read,
-                    CrudVerb::Update => CrudVerb::Update,
-                    CrudVerb::Delete => CrudVerb::Delete,
-                    CrudVerb::List => CrudVerb::List,
-                    CrudVerb::None => CrudVerb::None,
-                },
-                name,
-            );
+            return (verb, name);
         }
     }
 
