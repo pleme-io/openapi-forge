@@ -2,6 +2,7 @@ use thiserror::Error;
 
 /// Errors that can occur when loading, parsing, or querying an `OpenAPI` spec.
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum ForgeError {
     /// An I/O error occurred while reading the spec file from disk.
     #[error("failed to read spec file: {0}")]

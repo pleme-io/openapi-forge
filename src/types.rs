@@ -12,6 +12,7 @@ pub use takumi::FieldType as TypeInfo;
 /// This preserves API compatibility for code that pattern-matches on
 /// `SchemaOrRef::Ref` vs `SchemaOrRef::Schema`.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub enum SchemaOrRef {
     Ref { ref_path: String },
     Schema(Box<sekkei::Schema>),

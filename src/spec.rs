@@ -8,6 +8,7 @@ use crate::types::{OpenApiSpec, Operation, SchemaObject, SchemaOrRef, TypeInfo};
 
 /// The CRUD verb detected from an RPC-style operation path.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum RpcCrudVerb {
     /// Resource creation (e.g. `create-*`, `add-*`).
     Create,
