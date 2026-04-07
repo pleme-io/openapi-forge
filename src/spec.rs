@@ -1685,4 +1685,1200 @@ components:
             }
         );
     }
+
+    // ========================================================================
+    // JSON parsing — ensures the `starts_with('{')` branch in `from_str` works
+    // ========================================================================
+
+    #[test]
+    fn parse_json_spec() {
+        let json = r#"{
+            "openapi": "3.0.0",
+            "info": { "title": "JSON API", "version": "1.0" },
+            "paths": {
+                "/ping": {
+                    "get": {
+                        "operationId": "ping",
+                        "responses": { "200": { "description": "pong" } }
+                    }
+                }
+            },
+            "components": {
+                "schemas": {
+                    "Pong": {
+                        "type": "object",
+                        "properties": {
+                            "msg": { "type": "string" }
+                        }
+                    }
+                }
+            }
+        }"#;
+        let spec = Spec::from_str(json).expect("should parse JSON");
+        assert_eq!(spec.endpoints().len(), 1);
+        assert_eq!(spec.endpoints()[0].method, "get");
+        assert_eq!(spec.schema_names(), vec!["Pong"]);
+    }
+
+    #[test]
+    fn parse_json_with_leading_whitespace() {
+        let json = "   \n\t  {\"info\":{\"title\":\"Ws\",\"version\":\"1\"},\"paths\":{}}";
+        let spec = Spec::from_str(json).expect("should handle leading whitespace before {");
+        assert!(spec.endpoints().is_empty());
+    }
+
+    #[test]
+    fn parse_json_invalid_returns_error() {
+        let result = Spec::from_str("{\"not_a_valid_spec\": true}");
+        assert!(result.is_err());
+    }
+
+    // ========================================================================
+    // Spec::load — file-based loading via tempfile
+    // ========================================================================
+
+    #[test]
+    fn load_yaml_file() {
+        use std::io::Write;
+        let mut f = tempfile::NamedTempFile::new().expect("create temp");
+        write!(f, "{MINIMAL_SPEC}").expect("write");
+        let spec = Spec::load(f.path()).expect("load");
+        assert_eq!(spec.endpoints().len(), 4);
+    }
+
+    #[test]
+    fn load_json_file() {
+        use std::io::Write;
+        let mut f = tempfile::NamedTempFile::with_suffix(".json").expect("create temp");
+        let json = r#"{"openapi":"3.0.0","info":{"title":"F","version":"1"},"paths":{}}"#;
+        write!(f, "{json}").expect("write");
+        let spec = Spec::load(f.path()).expect("load json file");
+        assert!(spec.endpoints().is_empty());
+    }
+
+    #[test]
+    fn load_nonexistent_file_returns_io_error() {
+        let result = Spec::load(std::path::Path::new("/tmp/__no_such_file_openapi__.yaml"));
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(
+            matches!(err, ForgeError::Io(_)),
+            "expected Io error, got: {err:?}"
+        );
+    }
+
+    // ========================================================================
+    // schema() and schema_names() — error paths and edge cases
+    // ========================================================================
+
+    #[test]
+    fn schema_not_found_returns_error() {
+        let spec = Spec::from_str(MINIMAL_SPEC).expect("parse");
+        let err = spec.schema("NoSuchSchema").unwrap_err();
+        assert!(
+            matches!(err, ForgeError::SchemaNotFound(_)),
+            "expected SchemaNotFound, got: {err:?}"
+        );
+        assert!(err.to_string().contains("NoSuchSchema"));
+    }
+
+    #[test]
+    fn schema_names_returns_all_names() {
+        let spec = Spec::from_str(MINIMAL_SPEC).expect("parse");
+        let names = spec.schema_names();
+        assert!(names.contains(&"CreateSecret"));
+        assert!(names.contains(&"GetSecretValue"));
+        assert!(names.contains(&"UpdateSecretVal"));
+        assert!(names.contains(&"DeleteItem"));
+        assert!(names.contains(&"CreateSecretOutput"));
+        assert!(names.contains(&"GetSecretValueOutput"));
+    }
+
+    #[test]
+    fn schema_names_empty_when_no_components() {
+        let yaml = r#"
+openapi: "3.0.0"
+info:
+  title: No Components
+  version: "1.0"
+paths: {}
+"#;
+        let spec = Spec::from_str(yaml).expect("parse");
+        assert!(spec.schema_names().is_empty());
+    }
+
+    // ========================================================================
+    // resolve_schema_or_ref_type — Ref and Schema branches
+    // ========================================================================
+
+    #[test]
+    fn resolve_schema_or_ref_type_ref_variant() {
+        let spec = Spec::from_str(MINIMAL_SPEC).expect("parse");
+        let sor = SchemaOrRef::Ref {
+            ref_path: "#/components/schemas/CreateSecret".to_string(),
+        };
+        let ti = spec.resolve_schema_or_ref_type(&sor);
+        assert_eq!(ti, TypeInfo::Object("CreateSecret".to_string()));
+    }
+
+    #[test]
+    fn resolve_schema_or_ref_type_ref_no_slash() {
+        let spec = Spec::from_str(MINIMAL_SPEC).expect("parse");
+        let sor = SchemaOrRef::Ref {
+            ref_path: "Standalone".to_string(),
+        };
+        let ti = spec.resolve_schema_or_ref_type(&sor);
+        assert_eq!(ti, TypeInfo::Object("Standalone".to_string()));
+    }
+
+    #[test]
+    fn resolve_schema_or_ref_type_schema_variant() {
+        let spec = Spec::from_str(MINIMAL_SPEC).expect("parse");
+        let schema = SchemaObject {
+            schema_type: Some("string".to_string()),
+            ..SchemaObject::default()
+        };
+        let sor = SchemaOrRef::Schema(Box::new(schema));
+        let ti = spec.resolve_schema_or_ref_type(&sor);
+        assert_eq!(ti, TypeInfo::String);
+    }
+
+    // ========================================================================
+    // diff_schemas — detailed assertions and error paths
+    // ========================================================================
+
+    #[test]
+    fn diff_schemas_identical_schemas() {
+        let spec = Spec::from_str(MINIMAL_SPEC).expect("parse");
+        let diff = spec.diff_schemas("CreateSecret", "CreateSecret").expect("diff");
+        assert!(diff.added.is_empty());
+        assert!(diff.removed.is_empty());
+        assert!(diff.changed.is_empty());
+    }
+
+    #[test]
+    fn diff_schemas_added_and_removed() {
+        let spec = Spec::from_str(MINIMAL_SPEC).expect("parse");
+        let diff = spec
+            .diff_schemas("CreateSecret", "UpdateSecretVal")
+            .expect("diff");
+        assert!(
+            diff.removed.contains(&"metadata".to_string())
+                || diff.removed.contains(&"delete_protection".to_string()),
+            "CreateSecret has fields not in UpdateSecretVal: {:?}",
+            diff.removed
+        );
+    }
+
+    #[test]
+    fn diff_schemas_with_type_change() {
+        let yaml = r#"
+openapi: "3.0.0"
+info:
+  title: Diff
+  version: "1.0"
+paths: {}
+components:
+  schemas:
+    A:
+      type: object
+      required:
+        - x
+      properties:
+        x:
+          type: string
+    B:
+      type: object
+      properties:
+        x:
+          type: integer
+"#;
+        let spec = Spec::from_str(yaml).expect("parse");
+        let diff = spec.diff_schemas("A", "B").expect("diff");
+        assert_eq!(diff.changed.len(), 1);
+        assert_eq!(diff.changed[0].name, "x");
+        assert_eq!(diff.changed[0].old_type, TypeInfo::String);
+        assert_eq!(diff.changed[0].new_type, TypeInfo::Integer);
+        assert!(diff.changed[0].required_changed);
+    }
+
+    #[test]
+    fn diff_schemas_first_not_found() {
+        let spec = Spec::from_str(MINIMAL_SPEC).expect("parse");
+        let err = spec.diff_schemas("Missing", "CreateSecret").unwrap_err();
+        assert!(matches!(err, ForgeError::SchemaNotFound(_)));
+    }
+
+    #[test]
+    fn diff_schemas_second_not_found() {
+        let spec = Spec::from_str(MINIMAL_SPEC).expect("parse");
+        let err = spec.diff_schemas("CreateSecret", "Missing").unwrap_err();
+        assert!(matches!(err, ForgeError::SchemaNotFound(_)));
+    }
+
+    // ========================================================================
+    // endpoint_by_path — not-found case
+    // ========================================================================
+
+    #[test]
+    fn endpoint_by_path_not_found() {
+        let spec = Spec::from_str(MINIMAL_SPEC).expect("parse");
+        assert!(spec.endpoint_by_path("/no-such-path").is_none());
+    }
+
+    // ========================================================================
+    // Multiple HTTP methods in endpoints()
+    // ========================================================================
+
+    #[test]
+    fn endpoints_multiple_methods() {
+        let yaml = r#"
+openapi: "3.0.0"
+info:
+  title: Multi
+  version: "1.0"
+paths:
+  /resource:
+    get:
+      operationId: getResource
+      responses:
+        "200":
+          description: ok
+    post:
+      operationId: createResource
+      responses:
+        "200":
+          description: ok
+    put:
+      operationId: updateResource
+      responses:
+        "200":
+          description: ok
+    delete:
+      operationId: deleteResource
+      responses:
+        "200":
+          description: ok
+    patch:
+      operationId: patchResource
+      responses:
+        "200":
+          description: ok
+components:
+  schemas: {}
+"#;
+        let spec = Spec::from_str(yaml).expect("parse");
+        let eps = spec.endpoints();
+        assert_eq!(eps.len(), 5);
+        let methods: Vec<&str> = eps.iter().map(|e| e.method.as_str()).collect();
+        assert!(methods.contains(&"get"));
+        assert!(methods.contains(&"post"));
+        assert!(methods.contains(&"put"));
+        assert!(methods.contains(&"delete"));
+        assert!(methods.contains(&"patch"));
+    }
+
+    // ========================================================================
+    // Empty paths
+    // ========================================================================
+
+    #[test]
+    fn endpoints_empty_paths() {
+        let yaml = r#"
+openapi: "3.0.0"
+info:
+  title: Empty
+  version: "1.0"
+paths: {}
+"#;
+        let spec = Spec::from_str(yaml).expect("parse");
+        assert!(spec.endpoints().is_empty());
+    }
+
+    // ========================================================================
+    // Endpoint fields: summary, tags, response_schema_ref
+    // ========================================================================
+
+    #[test]
+    fn endpoint_summary_and_tags() {
+        let yaml = r#"
+openapi: "3.0.0"
+info:
+  title: Tags
+  version: "1.0"
+paths:
+  /items:
+    get:
+      operationId: listItems
+      summary: List all items
+      tags:
+        - items
+        - public
+      responses:
+        "200":
+          description: ok
+components:
+  schemas: {}
+"#;
+        let spec = Spec::from_str(yaml).expect("parse");
+        let ep = spec.endpoint_by_path("/items").expect("found");
+        assert_eq!(ep.summary.as_deref(), Some("List all items"));
+        assert_eq!(ep.tags, vec!["items", "public"]);
+    }
+
+    #[test]
+    fn endpoint_response_schema_ref() {
+        let spec = Spec::from_str(MINIMAL_SPEC).expect("parse");
+        let ep = spec.endpoint_by_path("/create-secret").expect("found");
+        assert_eq!(ep.response_schema_ref.as_deref(), Some("CreateSecretOutput"));
+    }
+
+    #[test]
+    fn endpoint_no_request_body() {
+        let yaml = r#"
+openapi: "3.0.0"
+info:
+  title: NoBody
+  version: "1.0"
+paths:
+  /health:
+    get:
+      operationId: healthCheck
+      responses:
+        "200":
+          description: ok
+components:
+  schemas: {}
+"#;
+        let spec = Spec::from_str(yaml).expect("parse");
+        let ep = spec.endpoint_by_path("/health").expect("found");
+        assert!(ep.request_schema_ref.is_none());
+        assert!(ep.response_schema_ref.is_none());
+    }
+
+    // ========================================================================
+    // extract_response_ref fallbacks: 201, default
+    // ========================================================================
+
+    #[test]
+    fn response_ref_fallback_201() {
+        let yaml = r#"
+openapi: "3.0.0"
+info:
+  title: Resp201
+  version: "1.0"
+paths:
+  /items:
+    post:
+      operationId: createItem
+      responses:
+        "201":
+          description: created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Item'
+components:
+  schemas:
+    Item:
+      type: object
+      properties:
+        id:
+          type: string
+"#;
+        let spec = Spec::from_str(yaml).expect("parse");
+        let ep = spec.endpoint_by_path("/items").expect("found");
+        assert_eq!(ep.response_schema_ref.as_deref(), Some("Item"));
+    }
+
+    #[test]
+    fn response_ref_fallback_default() {
+        let yaml = r#"
+openapi: "3.0.0"
+info:
+  title: RespDefault
+  version: "1.0"
+paths:
+  /items:
+    get:
+      operationId: getItem
+      responses:
+        default:
+          description: default resp
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericResp'
+components:
+  schemas:
+    GenericResp:
+      type: object
+      properties:
+        message:
+          type: string
+"#;
+        let spec = Spec::from_str(yaml).expect("parse");
+        let ep = spec.endpoint_by_path("/items").expect("found");
+        assert_eq!(ep.response_schema_ref.as_deref(), Some("GenericResp"));
+    }
+
+    // ========================================================================
+    // fields() — error path, metadata (description, default, format)
+    // ========================================================================
+
+    #[test]
+    fn fields_missing_schema_returns_error() {
+        let spec = Spec::from_str(MINIMAL_SPEC).expect("parse");
+        let err = spec.fields("DoesNotExist").unwrap_err();
+        assert!(matches!(err, ForgeError::SchemaNotFound(_)));
+    }
+
+    #[test]
+    fn field_description_and_default() {
+        let yaml = r#"
+openapi: "3.0.0"
+info:
+  title: FieldMeta
+  version: "1.0"
+paths: {}
+components:
+  schemas:
+    Config:
+      type: object
+      properties:
+        timeout:
+          type: integer
+          description: Request timeout in ms
+          default: 30000
+          format: int32
+"#;
+        let spec = Spec::from_str(yaml).expect("parse");
+        let fields = spec.fields("Config").expect("fields");
+        let timeout = fields.iter().find(|f| f.name == "timeout").expect("timeout");
+        assert_eq!(timeout.description.as_deref(), Some("Request timeout in ms"));
+        assert_eq!(timeout.default, Some(serde_json::json!(30000)));
+        assert_eq!(timeout.format.as_deref(), Some("int32"));
+    }
+
+    #[test]
+    fn field_required_vs_optional() {
+        let spec = Spec::from_str(MINIMAL_SPEC).expect("parse");
+        let fields = spec.fields("CreateSecret").expect("fields");
+        let name_f = fields.iter().find(|f| f.name == "name").unwrap();
+        let value_f = fields.iter().find(|f| f.name == "value").unwrap();
+        let token_f = fields.iter().find(|f| f.name == "token").unwrap();
+        assert!(name_f.required);
+        assert!(value_f.required);
+        assert!(!token_f.required);
+    }
+
+    // ========================================================================
+    // allOf — inline schema (no ref_path), circular ref protection
+    // ========================================================================
+
+    #[test]
+    fn allof_inline_schema_merged() {
+        let yaml = r#"
+openapi: "3.0.0"
+info:
+  title: AllOfInline
+  version: "1.0"
+paths: {}
+components:
+  schemas:
+    Combined:
+      type: object
+      allOf:
+        - type: object
+          properties:
+            from_inline:
+              type: string
+      properties:
+        own_field:
+          type: integer
+"#;
+        let spec = Spec::from_str(yaml).expect("parse");
+        let fields = spec.fields("Combined").expect("fields");
+        let names: Vec<&str> = fields.iter().map(|f| f.name.as_str()).collect();
+        assert!(names.contains(&"from_inline"));
+        assert!(names.contains(&"own_field"));
+    }
+
+    #[test]
+    fn allof_property_override_last_wins() {
+        let yaml = r#"
+openapi: "3.0.0"
+info:
+  title: AllOfOverride
+  version: "1.0"
+paths: {}
+components:
+  schemas:
+    Base:
+      type: object
+      properties:
+        field:
+          type: string
+    Override:
+      type: object
+      allOf:
+        - $ref: '#/components/schemas/Base'
+      required:
+        - field
+      properties:
+        field:
+          type: integer
+"#;
+        let spec = Spec::from_str(yaml).expect("parse");
+        let fields = spec.fields("Override").expect("fields");
+        let field = fields.iter().find(|f| f.name == "field").expect("field");
+        assert_eq!(field.type_info, TypeInfo::Integer);
+        assert!(field.required);
+    }
+
+    // ========================================================================
+    // group_by_crud_pattern — edge cases
+    // ========================================================================
+
+    #[test]
+    fn crud_grouping_skips_unrecognized_verbs() {
+        let yaml = r#"
+openapi: "3.0.0"
+info:
+  title: Unknown Verbs
+  version: "1.0"
+paths:
+  /custom-action:
+    post:
+      operationId: customAction
+      responses:
+        "200":
+          description: ok
+  /create-item:
+    post:
+      operationId: createItem
+      responses:
+        "200":
+          description: ok
+components:
+  schemas: {}
+"#;
+        let spec = Spec::from_str(yaml).expect("parse");
+        let groups = spec.group_by_crud_pattern();
+        let has_custom = groups.iter().any(|g| g.base_name.contains("custom"));
+        assert!(
+            !has_custom,
+            "custom-action should not create a CRUD group"
+        );
+        let has_item = groups.iter().any(|g| g.create.is_some());
+        assert!(has_item);
+    }
+
+    #[test]
+    fn crud_grouping_empty_spec() {
+        let yaml = r#"
+openapi: "3.0.0"
+info:
+  title: Empty
+  version: "1.0"
+paths: {}
+"#;
+        let spec = Spec::from_str(yaml).expect("parse");
+        let groups = spec.group_by_crud_pattern();
+        assert!(groups.is_empty());
+    }
+
+    #[test]
+    fn crud_grouping_all_verb_types() {
+        let yaml = r#"
+openapi: "3.0.0"
+info:
+  title: All Verbs
+  version: "1.0"
+paths:
+  /create-widget:
+    post:
+      operationId: createWidget
+      responses:
+        "200":
+          description: ok
+  /get-widget:
+    post:
+      operationId: getWidget
+      responses:
+        "200":
+          description: ok
+  /update-widget:
+    post:
+      operationId: updateWidget
+      responses:
+        "200":
+          description: ok
+  /delete-widget:
+    post:
+      operationId: deleteWidget
+      responses:
+        "200":
+          description: ok
+  /list-widgets:
+    post:
+      operationId: listWidgets
+      responses:
+        "200":
+          description: ok
+components:
+  schemas: {}
+"#;
+        let spec = Spec::from_str(yaml).expect("parse");
+        let groups = spec.group_by_crud_pattern();
+        let widget = groups.iter().find(|g| g.base_name == "widget").expect("widget group");
+        assert!(widget.create.is_some(), "create");
+        assert!(widget.read.is_some(), "read");
+        assert!(widget.update.is_some(), "update");
+        assert!(widget.delete.is_some(), "delete");
+        let list_group = groups.iter().find(|g| g.list.is_some());
+        assert!(list_group.is_some(), "list group should exist");
+    }
+
+    #[test]
+    fn crud_grouping_add_and_remove_verbs() {
+        let yaml = r#"
+openapi: "3.0.0"
+info:
+  title: Add Remove
+  version: "1.0"
+paths:
+  /add-user:
+    post:
+      operationId: addUser
+      responses:
+        "200":
+          description: ok
+  /remove-user:
+    post:
+      operationId: removeUser
+      responses:
+        "200":
+          description: ok
+  /describe-user:
+    post:
+      operationId: describeUser
+      responses:
+        "200":
+          description: ok
+components:
+  schemas: {}
+"#;
+        let spec = Spec::from_str(yaml).expect("parse");
+        let groups = spec.group_by_crud_pattern();
+        let user = groups.iter().find(|g| g.base_name == "user").expect("user group");
+        assert!(user.create.is_some(), "add- should map to create");
+        assert!(user.delete.is_some(), "remove- should map to delete");
+        assert!(user.read.is_some(), "describe- should map to read");
+    }
+
+    // ========================================================================
+    // detect_crud_verb / strip_verb_prefix — thorough edge case coverage
+    // ========================================================================
+
+    #[test]
+    fn detect_crud_verb_with_hyphenated_operation_id() {
+        let (verb, base) = detect_crud_verb("create-auth-method");
+        assert!(matches!(verb, CrudVerb::Create));
+        assert_eq!(base, "auth-method");
+    }
+
+    #[test]
+    fn detect_crud_verb_no_match() {
+        let (verb, base) = detect_crud_verb("custom-action");
+        assert!(matches!(verb, CrudVerb::None));
+        assert!(base.is_empty());
+    }
+
+    #[test]
+    fn strip_verb_prefix_all_verbs() {
+        assert_eq!(strip_verb_prefix("create-foo"), "foo");
+        assert_eq!(strip_verb_prefix("add-foo"), "foo");
+        assert_eq!(strip_verb_prefix("get-foo"), "foo");
+        assert_eq!(strip_verb_prefix("describe-foo"), "foo");
+        assert_eq!(strip_verb_prefix("update-foo"), "foo");
+        assert_eq!(strip_verb_prefix("delete-foo"), "foo");
+        assert_eq!(strip_verb_prefix("remove-foo"), "foo");
+        assert_eq!(strip_verb_prefix("list-foo"), "foo");
+    }
+
+    #[test]
+    fn strip_verb_prefix_no_match() {
+        assert_eq!(strip_verb_prefix("custom-foo"), "");
+    }
+
+    #[test]
+    fn strip_verb_prefix_case_insensitive() {
+        assert_eq!(strip_verb_prefix("Create-Foo"), "foo");
+        assert_eq!(strip_verb_prefix("GET-bar"), "bar");
+    }
+
+    // ========================================================================
+    // RpcPattern — case insensitivity, edge cases
+    // ========================================================================
+
+    #[test]
+    fn rpc_pattern_case_insensitive_match() {
+        let pat = RpcPattern::new(RpcCrudVerb::Create, "/Create-{resource}", "{0}");
+        assert_eq!(
+            pat.try_match("/create-secret"),
+            Some("secret".to_string())
+        );
+        assert_eq!(
+            pat.try_match("/CREATE-SECRET"),
+            Some("secret".to_string())
+        );
+    }
+
+    #[test]
+    fn rpc_pattern_empty_resource_returns_none() {
+        let pat = RpcPattern::new(RpcCrudVerb::Create, "/create-{resource}", "{0}");
+        assert_eq!(pat.try_match("/create-"), None);
+    }
+
+    #[test]
+    fn rpc_pattern_no_resource_placeholder_exact() {
+        let pat = RpcPattern::new(RpcCrudVerb::Read, "/health-check", "health");
+        assert_eq!(pat.try_match("/health-check"), Some("health".to_string()));
+        assert_eq!(pat.try_match("/health-checks"), None);
+        assert_eq!(pat.try_match("/other"), None);
+    }
+
+    #[test]
+    fn rpc_pattern_suffix_not_found() {
+        let pat = RpcPattern::new(
+            RpcCrudVerb::Create,
+            "/create-{resource}-target",
+            "target_{0}",
+        );
+        assert_eq!(pat.try_match("/create-aws-bucket"), None);
+    }
+
+    #[test]
+    fn rpc_pattern_hyphen_to_underscore_in_group() {
+        let pat = RpcPattern::new(RpcCrudVerb::Create, "/create-{resource}", "{0}");
+        assert_eq!(
+            pat.try_match("/create-my-resource"),
+            Some("my_resource".to_string())
+        );
+    }
+
+    #[test]
+    fn rpc_pattern_prefix_no_match() {
+        let pat = RpcPattern::new(RpcCrudVerb::Create, "/api/create-{resource}", "{0}");
+        assert_eq!(pat.try_match("/create-foo"), None);
+    }
+
+    // ========================================================================
+    // RpcCrudGrouper — patterns() method, unmatched endpoints, empty inputs
+    // ========================================================================
+
+    #[test]
+    fn rpc_grouper_patterns_method() {
+        let grouper = RpcCrudGrouper::new().patterns(vec![
+            RpcPattern::new(RpcCrudVerb::Create, "/make-{resource}", "{0}"),
+            RpcPattern::new(RpcCrudVerb::Delete, "/destroy-{resource}", "{0}"),
+        ]);
+        let endpoints = vec![
+            Endpoint {
+                path: "/make-widget".to_string(),
+                method: "post".to_string(),
+                operation_id: Some("makeWidget".to_string()),
+                summary: None,
+                tags: vec![],
+                request_schema_ref: None,
+                response_schema_ref: None,
+            },
+            Endpoint {
+                path: "/destroy-widget".to_string(),
+                method: "post".to_string(),
+                operation_id: Some("destroyWidget".to_string()),
+                summary: None,
+                tags: vec![],
+                request_schema_ref: None,
+                response_schema_ref: None,
+            },
+        ];
+        let groups = grouper.group(&endpoints);
+        assert_eq!(groups.len(), 1);
+        assert_eq!(groups[0].base_name, "widget");
+        assert!(groups[0].create.is_some());
+        assert!(groups[0].delete.is_some());
+    }
+
+    #[test]
+    fn rpc_grouper_unmatched_endpoints_ignored() {
+        let grouper = RpcCrudGrouper::new().pattern(RpcPattern::new(
+            RpcCrudVerb::Create,
+            "/create-{resource}",
+            "{0}",
+        ));
+        let endpoints = vec![
+            Endpoint {
+                path: "/create-thing".to_string(),
+                method: "post".to_string(),
+                operation_id: None,
+                summary: None,
+                tags: vec![],
+                request_schema_ref: None,
+                response_schema_ref: None,
+            },
+            Endpoint {
+                path: "/random-path".to_string(),
+                method: "get".to_string(),
+                operation_id: None,
+                summary: None,
+                tags: vec![],
+                request_schema_ref: None,
+                response_schema_ref: None,
+            },
+        ];
+        let groups = grouper.group(&endpoints);
+        assert_eq!(groups.len(), 1);
+        assert_eq!(groups[0].base_name, "thing");
+    }
+
+    #[test]
+    fn rpc_grouper_empty_endpoints() {
+        let grouper = RpcCrudGrouper::default_patterns();
+        let groups = grouper.group(&[]);
+        assert!(groups.is_empty());
+    }
+
+    #[test]
+    fn rpc_grouper_first_pattern_wins() {
+        let grouper = RpcCrudGrouper::new()
+            .pattern(RpcPattern::new(
+                RpcCrudVerb::Create,
+                "/create-{resource}",
+                "specific_{0}",
+            ))
+            .pattern(RpcPattern::new(
+                RpcCrudVerb::Create,
+                "/create-{resource}",
+                "fallback_{0}",
+            ));
+        let endpoints = vec![Endpoint {
+            path: "/create-item".to_string(),
+            method: "post".to_string(),
+            operation_id: None,
+            summary: None,
+            tags: vec![],
+            request_schema_ref: None,
+            response_schema_ref: None,
+        }];
+        let groups = grouper.group(&endpoints);
+        assert_eq!(groups[0].base_name, "specific_item");
+    }
+
+    // ========================================================================
+    // Akeyless patterns — list-auth-methods, list-targets, list-items, list-*
+    // ========================================================================
+
+    #[test]
+    fn rpc_grouper_akeyless_list_auth_methods() {
+        let spec_str = r#"
+openapi: "3.0.0"
+info:
+  title: List Test
+  version: "1.0"
+paths:
+  /list-auth-methods:
+    post:
+      operationId: listAuthMethods
+      responses:
+        "200":
+          description: ok
+  /list-targets:
+    post:
+      operationId: listTargets
+      responses:
+        "200":
+          description: ok
+  /list-items:
+    post:
+      operationId: listItems
+      responses:
+        "200":
+          description: ok
+  /list-dynamic-secrets:
+    post:
+      operationId: listDynamicSecrets
+      responses:
+        "200":
+          description: ok
+  /list-rotated-secrets:
+    post:
+      operationId: listRotatedSecrets
+      responses:
+        "200":
+          description: ok
+components:
+  schemas: {}
+"#;
+        let spec = Spec::from_str(spec_str).expect("parse");
+        let grouper = RpcCrudGrouper::akeyless_patterns();
+        let groups = grouper.group_spec(&spec);
+
+        let auth = groups.iter().find(|g| g.base_name == "auth_method");
+        assert!(auth.is_some(), "should have auth_method group for list-auth-methods");
+        assert!(auth.unwrap().list.is_some());
+
+        let target = groups.iter().find(|g| g.base_name == "target");
+        assert!(target.is_some(), "should have target group for list-targets");
+        assert!(target.unwrap().list.is_some());
+
+        let item = groups.iter().find(|g| g.base_name == "item");
+        assert!(item.is_some(), "should have item group for list-items");
+        assert!(item.unwrap().list.is_some());
+    }
+
+    // ========================================================================
+    // Enum values with non-string entries
+    // ========================================================================
+
+    #[test]
+    fn enum_values_non_string_entries() {
+        let yaml = r#"
+openapi: "3.0.0"
+info:
+  title: MixedEnum
+  version: "1.0"
+paths: {}
+components:
+  schemas:
+    MixedEnum:
+      type: object
+      properties:
+        code:
+          type: integer
+          enum:
+            - 100
+            - 200
+            - 300
+"#;
+        let spec = Spec::from_str(yaml).expect("parse");
+        let fields = spec.fields("MixedEnum").expect("fields");
+        let code = fields.iter().find(|f| f.name == "code").expect("code");
+        let enums = code.enum_values.as_ref().expect("should have enum_values");
+        assert_eq!(enums.len(), 3);
+        assert!(enums.contains(&"100".to_string()));
+        assert!(enums.contains(&"200".to_string()));
+        assert!(enums.contains(&"300".to_string()));
+    }
+
+    // ========================================================================
+    // Endpoint with operation_id from path fallback in group_by_crud_pattern
+    // ========================================================================
+
+    #[test]
+    fn crud_grouping_uses_path_when_no_operation_id() {
+        let yaml = r#"
+openapi: "3.0.0"
+info:
+  title: No OpId
+  version: "1.0"
+paths:
+  /create-thing:
+    post:
+      responses:
+        "200":
+          description: ok
+components:
+  schemas: {}
+"#;
+        let spec = Spec::from_str(yaml).expect("parse");
+        let groups = spec.group_by_crud_pattern();
+        assert!(!groups.is_empty(), "should still group by path when no operation_id");
+        let has_create = groups.iter().any(|g| g.create.is_some());
+        assert!(has_create);
+    }
+
+    // ========================================================================
+    // RpcCrudVerb — PartialEq, Debug, Clone, Copy
+    // ========================================================================
+
+    #[test]
+    fn rpc_crud_verb_traits() {
+        let verb = RpcCrudVerb::Create;
+        let cloned = verb;
+        assert_eq!(verb, cloned);
+        assert_eq!(verb, RpcCrudVerb::Create);
+        assert_ne!(verb, RpcCrudVerb::Delete);
+        let dbg = format!("{verb:?}");
+        assert!(dbg.contains("Create"));
+    }
+
+    // ========================================================================
+    // CrudGroup, Endpoint, Field, SchemaDiff, FieldChange — Debug, Clone
+    // ========================================================================
+
+    #[test]
+    fn structs_are_debug_and_clone() {
+        let ep = Endpoint {
+            path: "/test".to_string(),
+            method: "get".to_string(),
+            operation_id: Some("testOp".to_string()),
+            summary: Some("A summary".to_string()),
+            tags: vec!["tag1".to_string()],
+            request_schema_ref: None,
+            response_schema_ref: Some("Output".to_string()),
+        };
+        let cloned = ep.clone();
+        assert_eq!(cloned.path, "/test");
+        let dbg = format!("{ep:?}");
+        assert!(dbg.contains("testOp"));
+
+        let field = Field {
+            name: "x".to_string(),
+            type_info: TypeInfo::String,
+            required: true,
+            description: Some("desc".to_string()),
+            default: Some(serde_json::json!("default")),
+            format: Some("date".to_string()),
+            enum_values: None,
+        };
+        let field_cloned = field.clone();
+        assert_eq!(field_cloned.name, "x");
+        let _ = format!("{field:?}");
+
+        let diff = SchemaDiff {
+            added: vec!["a".to_string()],
+            removed: vec!["b".to_string()],
+            changed: vec![FieldChange {
+                name: "c".to_string(),
+                old_type: TypeInfo::String,
+                new_type: TypeInfo::Integer,
+                required_changed: true,
+            }],
+        };
+        let diff_cloned = diff.clone();
+        assert_eq!(diff_cloned.added, vec!["a"]);
+        let _ = format!("{diff:?}");
+
+        let group = CrudGroup {
+            base_name: "test".to_string(),
+            create: Some(ep.clone()),
+            read: None,
+            update: None,
+            delete: None,
+            list: None,
+        };
+        let group_cloned = group.clone();
+        assert_eq!(group_cloned.base_name, "test");
+        let _ = format!("{group:?}");
+    }
+
+    // ========================================================================
+    // Spec::schema_names with empty schemas map (components present but empty)
+    // ========================================================================
+
+    #[test]
+    fn schema_names_with_empty_schemas() {
+        let yaml = r#"
+openapi: "3.0.0"
+info:
+  title: Empty Schemas
+  version: "1.0"
+paths: {}
+components:
+  schemas: {}
+"#;
+        let spec = Spec::from_str(yaml).expect("parse");
+        assert!(spec.schema_names().is_empty());
+    }
+
+    // ========================================================================
+    // Request schema ref extraction edge: non-JSON content type
+    // ========================================================================
+
+    #[test]
+    fn request_ref_non_json_content_type() {
+        let yaml = r#"
+openapi: "3.0.0"
+info:
+  title: NonJson
+  version: "1.0"
+paths:
+  /upload:
+    post:
+      operationId: upload
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: ok
+components:
+  schemas: {}
+"#;
+        let spec = Spec::from_str(yaml).expect("parse");
+        let ep = spec.endpoint_by_path("/upload").expect("found");
+        assert!(
+            ep.request_schema_ref.is_none(),
+            "non-JSON content type should not extract schema ref"
+        );
+    }
+
+    // ========================================================================
+    // Response without content
+    // ========================================================================
+
+    #[test]
+    fn response_without_content() {
+        let yaml = r#"
+openapi: "3.0.0"
+info:
+  title: NoContent
+  version: "1.0"
+paths:
+  /delete:
+    delete:
+      operationId: deleteItem
+      responses:
+        "204":
+          description: No Content
+components:
+  schemas: {}
+"#;
+        let spec = Spec::from_str(yaml).expect("parse");
+        let ep = spec.endpoint_by_path("/delete").expect("found");
+        assert!(ep.response_schema_ref.is_none());
+    }
+
+    // ========================================================================
+    // Spec with allOf referencing nonexistent schema (resolve failure is silent)
+    // ========================================================================
+
+    #[test]
+    fn allof_ref_to_missing_schema_silently_skips() {
+        let yaml = r#"
+openapi: "3.0.0"
+info:
+  title: MissingRef
+  version: "1.0"
+paths: {}
+components:
+  schemas:
+    Derived:
+      type: object
+      allOf:
+        - $ref: '#/components/schemas/DoesNotExist'
+      properties:
+        own:
+          type: string
+"#;
+        let spec = Spec::from_str(yaml).expect("parse");
+        let fields = spec.fields("Derived").expect("fields");
+        let names: Vec<&str> = fields.iter().map(|f| f.name.as_str()).collect();
+        assert!(names.contains(&"own"));
+        assert!(!names.contains(&"DoesNotExist"));
+    }
 }
