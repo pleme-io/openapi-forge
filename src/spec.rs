@@ -180,7 +180,13 @@ impl RpcCrudGrouper {
     /// `describe-X`, `add-X`, `remove-X` patterns.
     #[must_use]
     pub fn default_patterns() -> Self {
-        Self::new().patterns(vec![
+        Self::new().patterns(Self::generic_patterns())
+    }
+
+    /// The generic verb-resource patterns shared by [`default_patterns`] and
+    /// used as fallbacks at the end of [`akeyless_patterns`].
+    fn generic_patterns() -> Vec<RpcPattern> {
+        vec![
             RpcPattern::new(RpcCrudVerb::Create, "/create-{resource}", "{0}"),
             RpcPattern::new(RpcCrudVerb::Create, "/add-{resource}", "{0}"),
             RpcPattern::new(RpcCrudVerb::Read, "/get-{resource}", "{0}"),
@@ -189,7 +195,7 @@ impl RpcCrudGrouper {
             RpcPattern::new(RpcCrudVerb::Delete, "/delete-{resource}", "{0}"),
             RpcPattern::new(RpcCrudVerb::Delete, "/remove-{resource}", "{0}"),
             RpcPattern::new(RpcCrudVerb::List, "/list-{resource}", "{0}"),
-        ])
+        ]
     }
 
     /// Create a grouper with Akeyless-specific patterns.
@@ -342,16 +348,8 @@ impl RpcCrudGrouper {
             RpcPattern::new(RpcCrudVerb::Read, "/describe-item", "item"),
             RpcPattern::new(RpcCrudVerb::Delete, "/delete-item", "item"),
             RpcPattern::new(RpcCrudVerb::List, "/list-items", "item"),
-            // --- Fallback generic patterns (must come last) ---
-            RpcPattern::new(RpcCrudVerb::Create, "/create-{resource}", "{0}"),
-            RpcPattern::new(RpcCrudVerb::Create, "/add-{resource}", "{0}"),
-            RpcPattern::new(RpcCrudVerb::Read, "/get-{resource}", "{0}"),
-            RpcPattern::new(RpcCrudVerb::Read, "/describe-{resource}", "{0}"),
-            RpcPattern::new(RpcCrudVerb::Update, "/update-{resource}", "{0}"),
-            RpcPattern::new(RpcCrudVerb::Delete, "/delete-{resource}", "{0}"),
-            RpcPattern::new(RpcCrudVerb::Delete, "/remove-{resource}", "{0}"),
-            RpcPattern::new(RpcCrudVerb::List, "/list-{resource}", "{0}"),
         ])
+        .patterns(Self::generic_patterns())
     }
 
     /// Group the given endpoints into CRUD groups using the configured patterns.
