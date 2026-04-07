@@ -22,6 +22,35 @@ pub enum RpcCrudVerb {
     List,
 }
 
+impl std::fmt::Display for RpcCrudVerb {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Create => f.write_str("create"),
+            Self::Read => f.write_str("read"),
+            Self::Update => f.write_str("update"),
+            Self::Delete => f.write_str("delete"),
+            Self::List => f.write_str("list"),
+        }
+    }
+}
+
+impl FromStr for RpcCrudVerb {
+    type Err = ForgeError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "create" => Ok(Self::Create),
+            "read" | "get" | "describe" => Ok(Self::Read),
+            "update" => Ok(Self::Update),
+            "delete" | "remove" => Ok(Self::Delete),
+            "list" => Ok(Self::List),
+            _ => Err(ForgeError::InvalidInput(format!(
+                "unknown CRUD verb: {s}"
+            ))),
+        }
+    }
+}
+
 /// A pattern that matches RPC-style operation paths to CRUD verbs and resource names.
 ///
 /// Each pattern has a verb, a regex-like prefix, and an optional suffix that together
@@ -3651,5 +3680,57 @@ components:
             .find(|g| g.base_name == "gateway_producer_aws")
             .expect("gateway_producer_aws group");
         assert!(gp.delete.is_some());
+    }
+
+    // ========================================================================
+    // Display / FromStr round-trip for RpcCrudVerb
+    // ========================================================================
+
+    #[test]
+    fn rpc_crud_verb_display_round_trip() {
+        let verbs = [
+            RpcCrudVerb::Create,
+            RpcCrudVerb::Read,
+            RpcCrudVerb::Update,
+            RpcCrudVerb::Delete,
+            RpcCrudVerb::List,
+        ];
+        for verb in verbs {
+            let s = verb.to_string();
+            let parsed: RpcCrudVerb = s.parse().expect("round-trip parse");
+            assert_eq!(parsed, verb);
+        }
+    }
+
+    #[test]
+    fn rpc_crud_verb_from_str_aliases() {
+        assert_eq!("get".parse::<RpcCrudVerb>().unwrap(), RpcCrudVerb::Read);
+        assert_eq!(
+            "describe".parse::<RpcCrudVerb>().unwrap(),
+            RpcCrudVerb::Read
+        );
+        assert_eq!(
+            "remove".parse::<RpcCrudVerb>().unwrap(),
+            RpcCrudVerb::Delete
+        );
+    }
+
+    #[test]
+    fn rpc_crud_verb_from_str_case_insensitive() {
+        assert_eq!(
+            "CREATE".parse::<RpcCrudVerb>().unwrap(),
+            RpcCrudVerb::Create
+        );
+        assert_eq!(
+            "Delete".parse::<RpcCrudVerb>().unwrap(),
+            RpcCrudVerb::Delete
+        );
+    }
+
+    #[test]
+    fn rpc_crud_verb_from_str_invalid() {
+        let err = "foobar".parse::<RpcCrudVerb>().unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("unknown CRUD verb"));
     }
 }

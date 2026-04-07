@@ -27,6 +27,10 @@ pub enum ForgeError {
     /// The spec declares a version other than 3.0.x.
     #[error("unsupported spec version: {0} (expected 3.0.x)")]
     UnsupportedVersion(String),
+
+    /// A string could not be parsed into the expected type.
+    #[error("invalid input: {0}")]
+    InvalidInput(String),
 }
 
 #[cfg(test)]
@@ -114,6 +118,12 @@ mod tests {
             .expect_err("should fail");
         let forge_err: ForgeError = json_err.into();
         assert!(matches!(forge_err, ForgeError::Json(_)));
+    }
+
+    #[test]
+    fn display_invalid_input() {
+        let err = ForgeError::InvalidInput("bad value".into());
+        assert_eq!(err.to_string(), "invalid input: bad value");
     }
 
     #[test]
