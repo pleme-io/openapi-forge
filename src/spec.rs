@@ -2913,4 +2913,742 @@ components:
         assert!(names.contains(&"own"));
         assert!(!names.contains(&"DoesNotExist"));
     }
+
+    // ========================================================================
+    // FromStr trait implementation
+    // ========================================================================
+
+    #[test]
+    fn from_str_trait_yaml() {
+        let spec: Spec = MINIMAL_SPEC.parse().expect("FromStr should parse YAML");
+        assert_eq!(spec.endpoints().len(), 4);
+    }
+
+    #[test]
+    fn from_str_trait_json() {
+        let json = r#"{"openapi":"3.0.0","info":{"title":"J","version":"1"},"paths":{}}"#;
+        let spec: Spec = json.parse().expect("FromStr should parse JSON");
+        assert!(spec.endpoints().is_empty());
+    }
+
+    #[test]
+    fn from_str_trait_error() {
+        let result: Result<Spec, _> = "{{totally broken".parse();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn parse_convenience_method() {
+        let spec = Spec::parse(MINIMAL_SPEC).expect("parse");
+        assert_eq!(spec.endpoints().len(), 4);
+    }
+
+    // ========================================================================
+    // Spec — Debug + Clone derives
+    // ========================================================================
+
+    #[test]
+    fn spec_debug_and_clone() {
+        let spec = Spec::from_str(MINIMAL_SPEC).expect("parse");
+        let cloned = spec.clone();
+        assert_eq!(cloned.endpoints().len(), spec.endpoints().len());
+        let dbg = format!("{spec:?}");
+        assert!(dbg.contains("Spec"));
+    }
+
+    // ========================================================================
+    // RpcCrudGrouper — Debug + Clone derives
+    // ========================================================================
+
+    #[test]
+    fn rpc_crud_grouper_debug_and_clone() {
+        let grouper = RpcCrudGrouper::default_patterns();
+        let cloned = grouper.clone();
+        let dbg = format!("{grouper:?}");
+        assert!(dbg.contains("RpcCrudGrouper"));
+        // Cloned grouper should produce identical results
+        let spec = Spec::from_str(MINIMAL_SPEC).expect("parse");
+        let g1 = grouper.group_spec(&spec);
+        let g2 = cloned.group_spec(&spec);
+        assert_eq!(g1.len(), g2.len());
+    }
+
+    // ========================================================================
+    // RpcPattern — Debug + Clone derives
+    // ========================================================================
+
+    #[test]
+    fn rpc_pattern_debug_and_clone() {
+        let pat = RpcPattern::new(RpcCrudVerb::Create, "/create-{resource}", "{0}");
+        let cloned = pat.clone();
+        assert_eq!(cloned.template, "/create-{resource}");
+        assert_eq!(cloned.group_name, "{0}");
+        assert_eq!(cloned.verb, RpcCrudVerb::Create);
+        let dbg = format!("{pat:?}");
+        assert!(dbg.contains("RpcPattern"));
+    }
+
+    // ========================================================================
+    // RpcCrudVerb — all variant equality comparisons
+    // ========================================================================
+
+    #[test]
+    fn rpc_crud_verb_all_variants_eq() {
+        let variants = [
+            RpcCrudVerb::Create,
+            RpcCrudVerb::Read,
+            RpcCrudVerb::Update,
+            RpcCrudVerb::Delete,
+            RpcCrudVerb::List,
+        ];
+        for (i, v1) in variants.iter().enumerate() {
+            for (j, v2) in variants.iter().enumerate() {
+                if i == j {
+                    assert_eq!(v1, v2);
+                } else {
+                    assert_ne!(v1, v2);
+                }
+            }
+        }
+    }
+
+    // ========================================================================
+    // Spec::endpoints — field extraction completeness
+    // ========================================================================
+
+    #[test]
+    fn endpoints_request_and_response_refs_complete() {
+        let spec = Spec::from_str(MINIMAL_SPEC).expect("parse");
+        let ep_create = spec.endpoint_by_path("/create-secret").unwrap();
+        assert_eq!(ep_create.request_schema_ref.as_deref(), Some("CreateSecret"));
+        assert_eq!(
+            ep_create.response_schema_ref.as_deref(),
+            Some("CreateSecretOutput")
+        );
+
+        let ep_get = spec.endpoint_by_path("/get-secret-value").unwrap();
+        assert_eq!(
+            ep_get.request_schema_ref.as_deref(),
+            Some("GetSecretValue")
+        );
+        assert_eq!(
+            ep_get.response_schema_ref.as_deref(),
+            Some("GetSecretValueOutput")
+        );
+
+        let ep_update = spec.endpoint_by_path("/update-secret-val").unwrap();
+        assert_eq!(
+            ep_update.request_schema_ref.as_deref(),
+            Some("UpdateSecretVal")
+        );
+        assert!(
+            ep_update.response_schema_ref.is_none(),
+            "update has no response ref"
+        );
+
+        let ep_delete = spec.endpoint_by_path("/delete-item").unwrap();
+        assert_eq!(ep_delete.request_schema_ref.as_deref(), Some("DeleteItem"));
+        assert!(ep_delete.response_schema_ref.is_none());
+    }
+
+    // ========================================================================
+    // diff_schemas — symmetric diff properties
+    // ========================================================================
+
+    #[test]
+    fn diff_schemas_symmetric_added_removed() {
+        let spec = Spec::from_str(MINIMAL_SPEC).expect("parse");
+        let forward = spec
+            .diff_schemas("CreateSecret", "UpdateSecretVal")
+            .expect("diff");
+        let reverse = spec
+            .diff_schemas("UpdateSecretVal", "CreateSecret")
+            .expect("diff");
+        assert_eq!(forward.added, reverse.removed);
+        assert_eq!(forward.removed, reverse.added);
+    }
+
+    // ========================================================================
+    // resolve_type — various schema types
+    // ========================================================================
+
+    #[test]
+    fn resolve_type_integer() {
+        let spec = Spec::from_str(MINIMAL_SPEC).expect("parse");
+        let schema = SchemaObject {
+            schema_type: Some("integer".to_string()),
+            ..SchemaObject::default()
+        };
+        assert_eq!(spec.resolve_type(&schema), TypeInfo::Integer);
+    }
+
+    #[test]
+    fn resolve_type_boolean() {
+        let spec = Spec::from_str(MINIMAL_SPEC).expect("parse");
+        let schema = SchemaObject {
+            schema_type: Some("boolean".to_string()),
+            ..SchemaObject::default()
+        };
+        assert_eq!(spec.resolve_type(&schema), TypeInfo::Boolean);
+    }
+
+    #[test]
+    fn resolve_type_array_of_integers() {
+        let spec = Spec::from_str(MINIMAL_SPEC).expect("parse");
+        let item_schema = SchemaObject {
+            schema_type: Some("integer".to_string()),
+            ..SchemaObject::default()
+        };
+        let schema = SchemaObject {
+            schema_type: Some("array".to_string()),
+            items: Some(Box::new(item_schema)),
+            ..SchemaObject::default()
+        };
+        assert_eq!(
+            spec.resolve_type(&schema),
+            TypeInfo::Array(Box::new(TypeInfo::Integer))
+        );
+    }
+
+    // ========================================================================
+    // resolve_schema_or_ref_type — empty ref_path edge case
+    // ========================================================================
+
+    #[test]
+    fn resolve_schema_or_ref_type_empty_ref() {
+        let spec = Spec::from_str(MINIMAL_SPEC).expect("parse");
+        let sor = SchemaOrRef::Ref {
+            ref_path: String::new(),
+        };
+        let ti = spec.resolve_schema_or_ref_type(&sor);
+        assert_eq!(ti, TypeInfo::Object(String::new()));
+    }
+
+    // ========================================================================
+    // Spec::schema — look up existing schemas
+    // ========================================================================
+
+    #[test]
+    fn schema_lookup_returns_correct_schema() {
+        let spec = Spec::from_str(MINIMAL_SPEC).expect("parse");
+        let schema = spec.schema("CreateSecret").unwrap();
+        assert!(schema.properties.contains_key("name"));
+        assert!(schema.properties.contains_key("value"));
+        assert!(schema.required.contains(&"name".to_string()));
+    }
+
+    // ========================================================================
+    // group_spec — via RpcCrudGrouper on Spec directly
+    // ========================================================================
+
+    #[test]
+    fn rpc_grouper_group_spec_same_as_group() {
+        let spec = Spec::from_str(AKEYLESS_SPEC).expect("parse");
+        let grouper = RpcCrudGrouper::akeyless_patterns();
+        let via_spec = grouper.group_spec(&spec);
+        let via_endpoints = grouper.group(&spec.endpoints());
+        assert_eq!(via_spec.len(), via_endpoints.len());
+        for (s, e) in via_spec.iter().zip(via_endpoints.iter()) {
+            assert_eq!(s.base_name, e.base_name);
+        }
+    }
+
+    // ========================================================================
+    // CrudGroup — verb count helper test
+    // ========================================================================
+
+    #[test]
+    fn crud_group_verb_coverage() {
+        let spec = Spec::from_str(AKEYLESS_SPEC).expect("parse");
+        let grouper = RpcCrudGrouper::akeyless_patterns();
+        let groups = grouper.group_spec(&spec);
+
+        let total_endpoints: usize = groups
+            .iter()
+            .map(|g| {
+                [
+                    g.create.is_some(),
+                    g.read.is_some(),
+                    g.update.is_some(),
+                    g.delete.is_some(),
+                    g.list.is_some(),
+                ]
+                .iter()
+                .filter(|&&v| v)
+                .count()
+            })
+            .sum();
+        assert!(
+            total_endpoints > 0,
+            "should have matched at least some endpoints"
+        );
+    }
+
+    // ========================================================================
+    // Multiple patterns matching different verbs for same resource
+    // ========================================================================
+
+    #[test]
+    fn rpc_grouper_multiple_verbs_same_resource() {
+        let grouper = RpcCrudGrouper::default_patterns();
+        let endpoints = vec![
+            Endpoint {
+                path: "/create-widget".to_string(),
+                method: "post".to_string(),
+                operation_id: None,
+                summary: None,
+                tags: vec![],
+                request_schema_ref: None,
+                response_schema_ref: None,
+            },
+            Endpoint {
+                path: "/get-widget".to_string(),
+                method: "get".to_string(),
+                operation_id: None,
+                summary: None,
+                tags: vec![],
+                request_schema_ref: None,
+                response_schema_ref: None,
+            },
+            Endpoint {
+                path: "/update-widget".to_string(),
+                method: "put".to_string(),
+                operation_id: None,
+                summary: None,
+                tags: vec![],
+                request_schema_ref: None,
+                response_schema_ref: None,
+            },
+            Endpoint {
+                path: "/delete-widget".to_string(),
+                method: "delete".to_string(),
+                operation_id: None,
+                summary: None,
+                tags: vec![],
+                request_schema_ref: None,
+                response_schema_ref: None,
+            },
+            Endpoint {
+                path: "/list-widget".to_string(),
+                method: "get".to_string(),
+                operation_id: None,
+                summary: None,
+                tags: vec![],
+                request_schema_ref: None,
+                response_schema_ref: None,
+            },
+        ];
+        let groups = grouper.group(&endpoints);
+        assert_eq!(groups.len(), 1);
+        let w = &groups[0];
+        assert_eq!(w.base_name, "widget");
+        assert!(w.create.is_some());
+        assert!(w.read.is_some());
+        assert!(w.update.is_some());
+        assert!(w.delete.is_some());
+        assert!(w.list.is_some());
+    }
+
+    // ========================================================================
+    // Error source chain tests (std::error::Error)
+    // ========================================================================
+
+    #[test]
+    fn forge_error_source_io() {
+        use std::error::Error;
+        let inner = std::io::Error::new(std::io::ErrorKind::NotFound, "gone");
+        let err = ForgeError::Io(inner);
+        assert!(err.source().is_some());
+    }
+
+    #[test]
+    fn forge_error_source_yaml() {
+        use std::error::Error;
+        let yaml_err = serde_yaml_ng::from_str::<serde_json::Value>("{{bad")
+            .expect_err("should fail");
+        let err = ForgeError::Yaml(yaml_err);
+        assert!(err.source().is_some());
+    }
+
+    #[test]
+    fn forge_error_source_json() {
+        use std::error::Error;
+        let json_err = serde_json::from_str::<serde_json::Value>("not json")
+            .expect_err("should fail");
+        let err = ForgeError::Json(json_err);
+        assert!(err.source().is_some());
+    }
+
+    #[test]
+    fn forge_error_source_schema_not_found() {
+        use std::error::Error;
+        let err = ForgeError::SchemaNotFound("X".into());
+        assert!(err.source().is_none());
+    }
+
+    #[test]
+    fn forge_error_source_unresolved_ref() {
+        use std::error::Error;
+        let err = ForgeError::UnresolvedRef("X".into());
+        assert!(err.source().is_none());
+    }
+
+    #[test]
+    fn forge_error_source_unsupported_version() {
+        use std::error::Error;
+        let err = ForgeError::UnsupportedVersion("2.0".into());
+        assert!(err.source().is_none());
+    }
+
+    // ========================================================================
+    // detect_crud_verb — all verb types
+    // ========================================================================
+
+    #[test]
+    fn detect_crud_verb_get() {
+        let (verb, base) = detect_crud_verb("get-user");
+        assert!(matches!(verb, CrudVerb::Read));
+        assert_eq!(base, "user");
+    }
+
+    #[test]
+    fn detect_crud_verb_describe() {
+        let (verb, base) = detect_crud_verb("describe-item");
+        assert!(matches!(verb, CrudVerb::Read));
+        assert_eq!(base, "item");
+    }
+
+    #[test]
+    fn detect_crud_verb_update() {
+        let (verb, base) = detect_crud_verb("update-config");
+        assert!(matches!(verb, CrudVerb::Update));
+        assert_eq!(base, "config");
+    }
+
+    #[test]
+    fn detect_crud_verb_delete() {
+        let (verb, base) = detect_crud_verb("delete-entry");
+        assert!(matches!(verb, CrudVerb::Delete));
+        assert_eq!(base, "entry");
+    }
+
+    #[test]
+    fn detect_crud_verb_remove() {
+        let (verb, base) = detect_crud_verb("remove-member");
+        assert!(matches!(verb, CrudVerb::Delete));
+        assert_eq!(base, "member");
+    }
+
+    #[test]
+    fn detect_crud_verb_add() {
+        let (verb, base) = detect_crud_verb("add-member");
+        assert!(matches!(verb, CrudVerb::Create));
+        assert_eq!(base, "member");
+    }
+
+    #[test]
+    fn detect_crud_verb_list() {
+        let (verb, base) = detect_crud_verb("list-users");
+        assert!(matches!(verb, CrudVerb::List));
+        assert_eq!(base, "users");
+    }
+
+    #[test]
+    fn detect_crud_verb_camel_case() {
+        let (verb, base) = detect_crud_verb("createUser");
+        assert!(matches!(verb, CrudVerb::Create));
+        assert!(!base.is_empty());
+    }
+
+    // ========================================================================
+    // Spec with nested object types
+    // ========================================================================
+
+    #[test]
+    fn fields_nested_object_type() {
+        let yaml = r#"
+openapi: "3.0.0"
+info:
+  title: Nested
+  version: "1.0"
+paths: {}
+components:
+  schemas:
+    Outer:
+      type: object
+      properties:
+        inner:
+          type: object
+          properties:
+            value:
+              type: string
+"#;
+        let spec = Spec::from_str(yaml).expect("parse");
+        let fields = spec.fields("Outer").expect("fields");
+        assert_eq!(fields.len(), 1);
+        assert_eq!(fields[0].name, "inner");
+    }
+
+    // ========================================================================
+    // Spec with number type
+    // ========================================================================
+
+    #[test]
+    fn resolve_type_number() {
+        let spec = Spec::from_str(MINIMAL_SPEC).expect("parse");
+        let schema = SchemaObject {
+            schema_type: Some("number".to_string()),
+            ..SchemaObject::default()
+        };
+        let ti = spec.resolve_type(&schema);
+        assert_eq!(ti, TypeInfo::Number);
+    }
+
+    // ========================================================================
+    // Endpoint with all five HTTP methods properly handled
+    // ========================================================================
+
+    #[test]
+    fn endpoint_method_ordering_is_deterministic() {
+        let yaml = r#"
+openapi: "3.0.0"
+info:
+  title: Order
+  version: "1.0"
+paths:
+  /resource:
+    get:
+      operationId: getR
+      responses:
+        "200":
+          description: ok
+    post:
+      operationId: postR
+      responses:
+        "200":
+          description: ok
+    put:
+      operationId: putR
+      responses:
+        "200":
+          description: ok
+    delete:
+      operationId: deleteR
+      responses:
+        "200":
+          description: ok
+    patch:
+      operationId: patchR
+      responses:
+        "200":
+          description: ok
+components:
+  schemas: {}
+"#;
+        let spec = Spec::from_str(yaml).expect("parse");
+        let eps = spec.endpoints();
+        let methods: Vec<&str> = eps.iter().map(|e| e.method.as_str()).collect();
+        assert_eq!(methods, vec!["get", "post", "put", "delete", "patch"]);
+    }
+
+    // ========================================================================
+    // Spec with multiple paths
+    // ========================================================================
+
+    #[test]
+    fn multiple_paths_all_enumerated() {
+        let yaml = r#"
+openapi: "3.0.0"
+info:
+  title: Multi
+  version: "1.0"
+paths:
+  /a:
+    get:
+      operationId: getA
+      responses:
+        "200":
+          description: ok
+  /b:
+    post:
+      operationId: postB
+      responses:
+        "200":
+          description: ok
+  /c:
+    put:
+      operationId: putC
+      responses:
+        "200":
+          description: ok
+components:
+  schemas: {}
+"#;
+        let spec = Spec::from_str(yaml).expect("parse");
+        let eps = spec.endpoints();
+        assert_eq!(eps.len(), 3);
+        let paths: Vec<&str> = eps.iter().map(|e| e.path.as_str()).collect();
+        assert!(paths.contains(&"/a"));
+        assert!(paths.contains(&"/b"));
+        assert!(paths.contains(&"/c"));
+    }
+
+    // ========================================================================
+    // SchemaOrRef::from_schema round-trip properties
+    // ========================================================================
+
+    #[test]
+    fn schema_or_ref_from_schema_ref_name_round_trip() {
+        let schema = sekkei::Schema {
+            ref_path: Some("#/components/schemas/Test".to_string()),
+            ..sekkei::Schema::default()
+        };
+        let sor = SchemaOrRef::from_schema(&schema);
+        assert_eq!(sor.ref_name(), Some("Test"));
+    }
+
+    // ========================================================================
+    // Akeyless pattern B: create-{variant}-target
+    // ========================================================================
+
+    #[test]
+    fn rpc_grouper_target_pattern_b() {
+        let spec_str = r#"
+openapi: "3.0.0"
+info:
+  title: Target B
+  version: "1.0"
+paths:
+  /create-gke-target:
+    post:
+      operationId: createGkeTarget
+      responses:
+        "200":
+          description: ok
+  /update-gke-target:
+    post:
+      operationId: updateGkeTarget
+      responses:
+        "200":
+          description: ok
+components:
+  schemas: {}
+"#;
+        let spec = Spec::from_str(spec_str).expect("parse");
+        let grouper = RpcCrudGrouper::akeyless_patterns();
+        let groups = grouper.group_spec(&spec);
+        let tgt = groups
+            .iter()
+            .find(|g| g.base_name == "target_gke")
+            .expect("target_gke group");
+        assert!(tgt.create.is_some());
+        assert!(tgt.update.is_some());
+    }
+
+    // ========================================================================
+    // Akeyless dynamic-secret pattern B: {verb}-dynamic-secret-{variant}
+    // ========================================================================
+
+    #[test]
+    fn rpc_grouper_dynamic_secret_pattern_b() {
+        let spec_str = r#"
+openapi: "3.0.0"
+info:
+  title: DynSec B
+  version: "1.0"
+paths:
+  /create-dynamic-secret-mysql:
+    post:
+      operationId: createDynamicSecretMysql
+      responses:
+        "200":
+          description: ok
+  /update-dynamic-secret-mysql:
+    post:
+      operationId: updateDynamicSecretMysql
+      responses:
+        "200":
+          description: ok
+components:
+  schemas: {}
+"#;
+        let spec = Spec::from_str(spec_str).expect("parse");
+        let grouper = RpcCrudGrouper::akeyless_patterns();
+        let groups = grouper.group_spec(&spec);
+        let ds = groups
+            .iter()
+            .find(|g| g.base_name == "dynamic_secret_mysql")
+            .expect("dynamic_secret_mysql group");
+        assert!(ds.create.is_some());
+        assert!(ds.update.is_some());
+    }
+
+    // ========================================================================
+    // Akeyless rotated-secret pattern B: {verb}-rotated-secret-{variant}
+    // ========================================================================
+
+    #[test]
+    fn rpc_grouper_rotated_secret_pattern_b() {
+        let spec_str = r#"
+openapi: "3.0.0"
+info:
+  title: RotSec B
+  version: "1.0"
+paths:
+  /create-rotated-secret-postgres:
+    post:
+      operationId: createRotatedSecretPostgres
+      responses:
+        "200":
+          description: ok
+  /update-rotated-secret-postgres:
+    post:
+      operationId: updateRotatedSecretPostgres
+      responses:
+        "200":
+          description: ok
+components:
+  schemas: {}
+"#;
+        let spec = Spec::from_str(spec_str).expect("parse");
+        let grouper = RpcCrudGrouper::akeyless_patterns();
+        let groups = grouper.group_spec(&spec);
+        let rs = groups
+            .iter()
+            .find(|g| g.base_name == "rotated_secret_postgres")
+            .expect("rotated_secret_postgres group");
+        assert!(rs.create.is_some());
+        assert!(rs.update.is_some());
+    }
+
+    // ========================================================================
+    // Gateway delete-producer pattern
+    // ========================================================================
+
+    #[test]
+    fn rpc_grouper_gateway_delete_producer() {
+        let spec_str = r#"
+openapi: "3.0.0"
+info:
+  title: GW Delete
+  version: "1.0"
+paths:
+  /gateway-delete-producer-aws:
+    post:
+      operationId: gatewayDeleteProducerAws
+      responses:
+        "200":
+          description: ok
+components:
+  schemas: {}
+"#;
+        let spec = Spec::from_str(spec_str).expect("parse");
+        let grouper = RpcCrudGrouper::akeyless_patterns();
+        let groups = grouper.group_spec(&spec);
+        let gp = groups
+            .iter()
+            .find(|g| g.base_name == "gateway_producer_aws")
+            .expect("gateway_producer_aws group");
+        assert!(gp.delete.is_some());
+    }
 }
