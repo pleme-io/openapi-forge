@@ -518,20 +518,19 @@ impl Spec {
     /// Get all endpoints in the spec.
     #[must_use]
     pub fn endpoints(&self) -> Vec<Endpoint> {
-        let mut result = Vec::new();
-
-        for (path, item) in &self.raw.paths {
-            let methods: &[(&str, &Option<Operation>)] = &[
-                ("get", &item.get),
-                ("post", &item.post),
-                ("put", &item.put),
-                ("delete", &item.delete),
-                ("patch", &item.patch),
-            ];
-
-            for &(method, op) in methods {
-                if let Some(operation) = op {
-                    result.push(Endpoint {
+        self.raw
+            .paths
+            .iter()
+            .flat_map(|(path, item)| {
+                let methods: [(&str, &Option<Operation>); 5] = [
+                    ("get", &item.get),
+                    ("post", &item.post),
+                    ("put", &item.put),
+                    ("delete", &item.delete),
+                    ("patch", &item.patch),
+                ];
+                methods.into_iter().filter_map(move |(method, op)| {
+                    op.as_ref().map(|operation| Endpoint {
                         path: path.clone(),
                         method: method.to_string(),
                         operation_id: operation.operation_id.clone(),
@@ -539,12 +538,10 @@ impl Spec {
                         tags: operation.tags.clone(),
                         request_schema_ref: Self::extract_request_ref(operation),
                         response_schema_ref: Self::extract_response_ref(operation),
-                    });
-                }
-            }
-        }
-
-        result
+                    })
+                })
+            })
+            .collect()
     }
 
     /// Look up a component schema by name.
@@ -612,30 +609,34 @@ impl Spec {
         let map_a: IndexMap<&str, &Field> = fields_a.iter().map(|f| (f.name.as_str(), f)).collect();
         let map_b: IndexMap<&str, &Field> = fields_b.iter().map(|f| (f.name.as_str(), f)).collect();
 
-        let mut added = Vec::new();
-        let mut removed = Vec::new();
-        let mut changed = Vec::new();
+        let added: Vec<String> = map_b
+            .keys()
+            .filter(|name| !map_a.contains_key(*name))
+            .map(|name| (*name).to_string())
+            .collect();
 
-        for (name, field_b) in &map_b {
-            if let Some(field_a) = map_a.get(name) {
+        let removed: Vec<String> = map_a
+            .keys()
+            .filter(|name| !map_b.contains_key(*name))
+            .map(|name| (*name).to_string())
+            .collect();
+
+        let changed: Vec<FieldChange> = map_b
+            .iter()
+            .filter_map(|(name, field_b)| {
+                let field_a = map_a.get(name)?;
                 if field_a.type_info != field_b.type_info || field_a.required != field_b.required {
-                    changed.push(FieldChange {
+                    Some(FieldChange {
                         name: (*name).to_string(),
                         old_type: field_a.type_info.clone(),
                         new_type: field_b.type_info.clone(),
                         required_changed: field_a.required != field_b.required,
-                    });
+                    })
+                } else {
+                    None
                 }
-            } else {
-                added.push((*name).to_string());
-            }
-        }
-
-        for name in map_a.keys() {
-            if !map_b.contains_key(name) {
-                removed.push((*name).to_string());
-            }
-        }
+            })
+            .collect();
 
         Ok(SchemaDiff {
             added,
