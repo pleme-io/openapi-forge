@@ -497,8 +497,8 @@ impl Spec {
     /// # Errors
     ///
     /// Returns an error if the file cannot be read, parsed, or is not `OpenAPI` 3.0.x.
-    pub fn load(path: &Path) -> Result<Self, ForgeError> {
-        let content = std::fs::read_to_string(path)?;
+    pub fn load(path: impl AsRef<Path>) -> Result<Self, ForgeError> {
+        let content = std::fs::read_to_string(path.as_ref())?;
         Self::parse(&content)
     }
 
