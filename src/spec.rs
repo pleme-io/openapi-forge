@@ -4,7 +4,7 @@ use std::str::FromStr;
 use indexmap::IndexMap;
 
 use crate::error::ForgeError;
-use crate::types::{OpenApiSpec, Operation, SchemaObject, SchemaOrRef, TypeInfo};
+use crate::types::{ref_name_from_path, OpenApiSpec, Operation, SchemaObject, SchemaOrRef, TypeInfo};
 
 /// The CRUD verb detected from an RPC-style operation path.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -597,7 +597,7 @@ impl Spec {
     pub fn resolve_schema_or_ref_type(&self, schema_or_ref: &SchemaOrRef) -> TypeInfo {
         match schema_or_ref {
             SchemaOrRef::Ref { ref_path } => {
-                let name = ref_path.rsplit('/').next().unwrap_or("Unknown");
+                let name = ref_name_from_path(ref_path).unwrap_or("Unknown");
                 TypeInfo::Object(name.to_string())
             }
             SchemaOrRef::Schema(schema) => takumi::schema_to_field_type(schema),
@@ -714,7 +714,7 @@ impl Spec {
         for item in &schema.all_of {
             if let Some(ref_path) = &item.ref_path {
                 // This is a $ref inside allOf
-                if let Some(name) = ref_path.rsplit('/').next() {
+                if let Some(name) = ref_name_from_path(ref_path) {
                     // Prevent infinite recursion on circular refs
                     if !visited.contains(&name.to_string()) {
                         visited.push(name.to_string());
@@ -767,16 +767,14 @@ impl Spec {
         let body = op.request_body.as_ref()?;
         let media = body.content.get("application/json")?;
         let schema = media.schema.as_ref()?;
-        // sekkei Schema uses ref_path field directly
         schema
             .ref_path
             .as_ref()
-            .and_then(|r| r.rsplit('/').next())
+            .and_then(|r| ref_name_from_path(r))
             .map(String::from)
     }
 
     fn extract_response_ref(op: &Operation) -> Option<String> {
-        // Try 200, 201, then default
         let response = op
             .responses
             .get("200")
@@ -788,7 +786,7 @@ impl Spec {
         schema
             .ref_path
             .as_ref()
-            .and_then(|r| r.rsplit('/').next())
+            .and_then(|r| ref_name_from_path(r))
             .map(String::from)
     }
 }

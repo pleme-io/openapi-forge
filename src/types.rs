@@ -6,6 +6,12 @@ pub use sekkei::{Components, OpenApiSpec, Operation, PathItem};
 // Re-export takumi's FieldType as TypeInfo for backward compatibility.
 pub use takumi::FieldType as TypeInfo;
 
+/// Extract the last segment of a `$ref` path (e.g. `Foo` from `#/components/schemas/Foo`).
+#[must_use]
+pub(crate) fn ref_name_from_path(ref_path: &str) -> Option<&str> {
+    ref_path.rsplit('/').next()
+}
+
 /// Adapter: convert sekkei's flat `Schema` (with optional `ref_path`) to the
 /// `SchemaOrRef` enum pattern used by openapi-forge consumers.
 ///
@@ -23,7 +29,7 @@ impl SchemaOrRef {
     #[must_use]
     pub fn ref_name(&self) -> Option<&str> {
         match self {
-            Self::Ref { ref_path } => ref_path.rsplit('/').next(),
+            Self::Ref { ref_path } => ref_name_from_path(ref_path),
             Self::Schema(_) => None,
         }
     }
