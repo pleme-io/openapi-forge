@@ -1,4 +1,4 @@
-//! OpenAPI types -- delegated to sekkei for canonical definitions,
+//! `OpenAPI` types -- delegated to sekkei for canonical definitions,
 //! with a compatibility `SchemaOrRef` adapter for openapi-forge consumers.
 
 pub use sekkei::{Components, OpenApiSpec, Operation, PathItem};

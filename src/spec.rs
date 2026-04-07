@@ -1,4 +1,5 @@
 use std::path::Path;
+use std::str::FromStr;
 
 use indexmap::IndexMap;
 
@@ -57,7 +58,7 @@ impl RpcPattern {
 
             let captured = if suffix.is_empty() {
                 rest.to_string()
-            } else if let Some(end_idx) = rest.find(&*suffix) {
+            } else if let Some(end_idx) = rest.find(suffix) {
                 rest[..end_idx].to_string()
             } else {
                 return None;
@@ -370,7 +371,7 @@ impl RpcCrudGrouper {
     }
 }
 
-/// High-level representation of a parsed and queryable OpenAPI spec.
+/// High-level representation of a parsed and queryable `OpenAPI` spec.
 #[derive(Debug, Clone)]
 pub struct Spec {
     raw: OpenApiSpec,
@@ -429,22 +430,24 @@ pub struct CrudGroup {
 }
 
 impl Spec {
-    /// Load an OpenAPI spec from a YAML or JSON file.
+    /// Load an `OpenAPI` spec from a YAML or JSON file.
     ///
     /// # Errors
     ///
-    /// Returns an error if the file cannot be read, parsed, or is not OpenAPI 3.0.x.
+    /// Returns an error if the file cannot be read, parsed, or is not `OpenAPI` 3.0.x.
     pub fn load(path: &Path) -> Result<Self, ForgeError> {
         let content = std::fs::read_to_string(path)?;
-        Self::from_str(&content)
+        Self::parse(&content)
     }
 
-    /// Parse an OpenAPI spec from a string (YAML or JSON).
+    /// Parse an `OpenAPI` spec from a string (YAML or JSON).
+    ///
+    /// Convenience wrapper around the [`FromStr`] implementation.
     ///
     /// # Errors
     ///
     /// Returns an error if the string cannot be parsed.
-    pub fn from_str(content: &str) -> Result<Self, ForgeError> {
+    pub fn parse(content: &str) -> Result<Self, ForgeError> {
         let raw: OpenApiSpec = if content.trim_start().starts_with('{') {
             serde_json::from_str(content)?
         } else {
@@ -674,9 +677,9 @@ impl Spec {
             let format = prop.format.clone();
             let enum_values = prop.enum_values.as_ref().map(|vals| {
                 vals.iter()
-                    .filter_map(|v| match v {
-                        serde_json::Value::String(s) => Some(s.clone()),
-                        other => Some(other.to_string()),
+                    .map(|v| match v {
+                        serde_json::Value::String(s) => s.clone(),
+                        other => other.to_string(),
                     })
                     .collect()
             });
@@ -728,6 +731,14 @@ impl Spec {
     }
 }
 
+impl FromStr for Spec {
+    type Err = ForgeError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Self::parse(s)
+    }
+}
+
 enum CrudVerb {
     Create,
     Read,
@@ -753,9 +764,7 @@ fn detect_crud_verb(operation_id: &str) -> (CrudVerb, String) {
     ];
 
     for (prefix, verb) in prefixes {
-        if normalized.starts_with(prefix) {
-            let base = &normalized[prefix.len()..];
-            // Also try with the original hyphenated form for base name
+        if let Some(base) = normalized.strip_prefix(prefix) {
             let original_base = strip_verb_prefix(operation_id);
             let name = if original_base.is_empty() {
                 base.to_string()
