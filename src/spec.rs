@@ -663,7 +663,7 @@ impl Spec {
             let op_id = ep.operation_id.as_deref().unwrap_or(path);
 
             // Detect CRUD verb prefix
-            let (verb, base) = detect_crud_verb(op_id);
+            let (verb, base) = Self::detect_crud_verb(op_id);
             if base.is_empty() {
                 continue;
             }
@@ -811,53 +811,54 @@ enum CrudVerb {
     None,
 }
 
-fn detect_crud_verb(operation_id: &str) -> (CrudVerb, String) {
-    // Normalize: remove hyphens, lowercase
-    let normalized = operation_id.replace('-', "").to_lowercase();
+impl Spec {
+    fn detect_crud_verb(operation_id: &str) -> (CrudVerb, String) {
+        let normalized = operation_id.replace('-', "").to_lowercase();
 
-    let prefixes: &[(&str, CrudVerb)] = &[
-        ("create", CrudVerb::Create),
-        ("add", CrudVerb::Create),
-        ("get", CrudVerb::Read),
-        ("describe", CrudVerb::Read),
-        ("update", CrudVerb::Update),
-        ("delete", CrudVerb::Delete),
-        ("remove", CrudVerb::Delete),
-        ("list", CrudVerb::List),
-    ];
+        let prefixes: &[(&str, CrudVerb)] = &[
+            ("create", CrudVerb::Create),
+            ("add", CrudVerb::Create),
+            ("get", CrudVerb::Read),
+            ("describe", CrudVerb::Read),
+            ("update", CrudVerb::Update),
+            ("delete", CrudVerb::Delete),
+            ("remove", CrudVerb::Delete),
+            ("list", CrudVerb::List),
+        ];
 
-    for &(prefix, verb) in prefixes {
-        if let Some(base) = normalized.strip_prefix(prefix) {
-            let original_base = strip_verb_prefix(operation_id);
-            let name = if original_base.is_empty() {
-                base.to_string()
-            } else {
-                original_base
-            };
-            return (verb, name);
+        for &(prefix, verb) in prefixes {
+            if let Some(base) = normalized.strip_prefix(prefix) {
+                let original_base = Self::strip_verb_prefix(operation_id);
+                let name = if original_base.is_empty() {
+                    base.to_string()
+                } else {
+                    original_base
+                };
+                return (verb, name);
+            }
         }
+
+        (CrudVerb::None, String::new())
     }
 
-    (CrudVerb::None, String::new())
-}
-
-fn strip_verb_prefix(operation_id: &str) -> String {
-    let verbs = [
-        "create-",
-        "add-",
-        "get-",
-        "describe-",
-        "update-",
-        "delete-",
-        "remove-",
-        "list-",
-    ];
-    for verb in &verbs {
-        if let Some(rest) = operation_id.to_lowercase().strip_prefix(verb) {
-            return rest.to_string();
+    fn strip_verb_prefix(operation_id: &str) -> String {
+        const VERB_PREFIXES: &[&str] = &[
+            "create-",
+            "add-",
+            "get-",
+            "describe-",
+            "update-",
+            "delete-",
+            "remove-",
+            "list-",
+        ];
+        for verb in VERB_PREFIXES {
+            if let Some(rest) = operation_id.to_lowercase().strip_prefix(verb) {
+                return rest.to_string();
+            }
         }
+        String::new()
     }
-    String::new()
 }
 
 #[cfg(test)]
@@ -2445,39 +2446,39 @@ components:
 
     #[test]
     fn detect_crud_verb_with_hyphenated_operation_id() {
-        let (verb, base) = detect_crud_verb("create-auth-method");
+        let (verb, base) = Spec::detect_crud_verb("create-auth-method");
         assert!(matches!(verb, CrudVerb::Create));
         assert_eq!(base, "auth-method");
     }
 
     #[test]
     fn detect_crud_verb_no_match() {
-        let (verb, base) = detect_crud_verb("custom-action");
+        let (verb, base) = Spec::detect_crud_verb("custom-action");
         assert!(matches!(verb, CrudVerb::None));
         assert!(base.is_empty());
     }
 
     #[test]
     fn strip_verb_prefix_all_verbs() {
-        assert_eq!(strip_verb_prefix("create-foo"), "foo");
-        assert_eq!(strip_verb_prefix("add-foo"), "foo");
-        assert_eq!(strip_verb_prefix("get-foo"), "foo");
-        assert_eq!(strip_verb_prefix("describe-foo"), "foo");
-        assert_eq!(strip_verb_prefix("update-foo"), "foo");
-        assert_eq!(strip_verb_prefix("delete-foo"), "foo");
-        assert_eq!(strip_verb_prefix("remove-foo"), "foo");
-        assert_eq!(strip_verb_prefix("list-foo"), "foo");
+        assert_eq!(Spec::strip_verb_prefix("create-foo"), "foo");
+        assert_eq!(Spec::strip_verb_prefix("add-foo"), "foo");
+        assert_eq!(Spec::strip_verb_prefix("get-foo"), "foo");
+        assert_eq!(Spec::strip_verb_prefix("describe-foo"), "foo");
+        assert_eq!(Spec::strip_verb_prefix("update-foo"), "foo");
+        assert_eq!(Spec::strip_verb_prefix("delete-foo"), "foo");
+        assert_eq!(Spec::strip_verb_prefix("remove-foo"), "foo");
+        assert_eq!(Spec::strip_verb_prefix("list-foo"), "foo");
     }
 
     #[test]
     fn strip_verb_prefix_no_match() {
-        assert_eq!(strip_verb_prefix("custom-foo"), "");
+        assert_eq!(Spec::strip_verb_prefix("custom-foo"), "");
     }
 
     #[test]
     fn strip_verb_prefix_case_insensitive() {
-        assert_eq!(strip_verb_prefix("Create-Foo"), "foo");
-        assert_eq!(strip_verb_prefix("GET-bar"), "bar");
+        assert_eq!(Spec::strip_verb_prefix("Create-Foo"), "foo");
+        assert_eq!(Spec::strip_verb_prefix("GET-bar"), "bar");
     }
 
     // ========================================================================
@@ -3336,56 +3337,56 @@ components:
 
     #[test]
     fn detect_crud_verb_get() {
-        let (verb, base) = detect_crud_verb("get-user");
+        let (verb, base) = Spec::detect_crud_verb("get-user");
         assert!(matches!(verb, CrudVerb::Read));
         assert_eq!(base, "user");
     }
 
     #[test]
     fn detect_crud_verb_describe() {
-        let (verb, base) = detect_crud_verb("describe-item");
+        let (verb, base) = Spec::detect_crud_verb("describe-item");
         assert!(matches!(verb, CrudVerb::Read));
         assert_eq!(base, "item");
     }
 
     #[test]
     fn detect_crud_verb_update() {
-        let (verb, base) = detect_crud_verb("update-config");
+        let (verb, base) = Spec::detect_crud_verb("update-config");
         assert!(matches!(verb, CrudVerb::Update));
         assert_eq!(base, "config");
     }
 
     #[test]
     fn detect_crud_verb_delete() {
-        let (verb, base) = detect_crud_verb("delete-entry");
+        let (verb, base) = Spec::detect_crud_verb("delete-entry");
         assert!(matches!(verb, CrudVerb::Delete));
         assert_eq!(base, "entry");
     }
 
     #[test]
     fn detect_crud_verb_remove() {
-        let (verb, base) = detect_crud_verb("remove-member");
+        let (verb, base) = Spec::detect_crud_verb("remove-member");
         assert!(matches!(verb, CrudVerb::Delete));
         assert_eq!(base, "member");
     }
 
     #[test]
     fn detect_crud_verb_add() {
-        let (verb, base) = detect_crud_verb("add-member");
+        let (verb, base) = Spec::detect_crud_verb("add-member");
         assert!(matches!(verb, CrudVerb::Create));
         assert_eq!(base, "member");
     }
 
     #[test]
     fn detect_crud_verb_list() {
-        let (verb, base) = detect_crud_verb("list-users");
+        let (verb, base) = Spec::detect_crud_verb("list-users");
         assert!(matches!(verb, CrudVerb::List));
         assert_eq!(base, "users");
     }
 
     #[test]
     fn detect_crud_verb_camel_case() {
-        let (verb, base) = detect_crud_verb("createUser");
+        let (verb, base) = Spec::detect_crud_verb("createUser");
         assert!(matches!(verb, CrudVerb::Create));
         assert!(!base.is_empty());
     }
