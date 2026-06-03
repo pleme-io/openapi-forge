@@ -535,7 +535,7 @@ rec {
       };
       "openapi-forge" = rec {
         crateName = "openapi-forge";
-        version = "0.1.3";
+        version = "0.1.4";
         edition = "2024";
         src = lib.cleanSourceWith { filter = sourceFilter;  src = ./.; };
         libName = "openapi_forge";
@@ -797,8 +797,8 @@ rec {
         workspace_member = null;
         src = pkgs.fetchgit {
           url = "https://github.com/pleme-io/sekkei";
-          rev = "96512bcc418f61918f7d1c7c8e9ea125cdf44d3f";
-          sha256 = "1p52wzqprxf7my1iykvmcqvc2w453izphh58ws8z0x213r2qmc00";
+          rev = "d7e53a772d42594be70c8cbcdce5d75cab8b4ddb";
+          sha256 = "1ws0hqnn4414hcgb79gxdg9l4fr1r98hjafqdlawaniy0cpxas8s";
         };
         dependencies = [
           {
@@ -1052,8 +1052,8 @@ rec {
         workspace_member = null;
         src = pkgs.fetchgit {
           url = "https://github.com/pleme-io/takumi";
-          rev = "a7083802a52bf55813b4941579c269fc8d604329";
-          sha256 = "128h88d3yrgqmbxkgg3pb1khqjdnf8r25qiczk2w5i6i44xg5g58";
+          rev = "754e30c59449bbe259244a978d287978bf01aeb2";
+          sha256 = "1bigh000x69dcf1s43fgszc2142r30whwdc8flsyqghzaq7xzzgl";
         };
         dependencies = [
           {
