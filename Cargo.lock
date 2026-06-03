@@ -144,7 +144,7 @@ checksum = "9f7c3e4beb33f85d45ae3e3a1792185706c8e16d043238c593331cc7cd313b50"
 
 [[package]]
 name = "openapi-forge"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "indexmap",
  "sekkei",
@@ -212,7 +212,7 @@ checksum = "9774ba4a74de5f7b1c1451ed6cd5285a32eddb5cccb8cc655a4e50009e06477f"
 [[package]]
 name = "sekkei"
 version = "0.1.1"
-source = "git+https://github.com/pleme-io/sekkei#96512bcc418f61918f7d1c7c8e9ea125cdf44d3f"
+source = "git+https://github.com/pleme-io/sekkei#4e969b085bd8e55811edf317b449cd965c66ee88"
 dependencies = [
  "serde",
  "serde_json",
@@ -296,7 +296,7 @@ dependencies = [
 [[package]]
 name = "takumi"
 version = "0.1.0"
-source = "git+https://github.com/pleme-io/takumi#a7083802a52bf55813b4941579c269fc8d604329"
+source = "git+https://github.com/pleme-io/takumi#611d2e6ec306e0b35a7471810ea6cafcd1263298"
 dependencies = [
  "indexmap",
  "sekkei",
