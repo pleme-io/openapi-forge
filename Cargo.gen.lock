@@ -253,7 +253,7 @@
           },
           {
             "name": "sekkei",
-            "package_key": "sekkei-0.1.1",
+            "package_key": "sekkei-0.1.1-d7e53a772d42594be70c8cbcdce5d75cab8b4ddb",
             "kind": "normal",
             "features": [],
             "uses_default_features": true,
@@ -295,7 +295,7 @@
           },
           {
             "name": "takumi",
-            "package_key": "takumi-0.1.0",
+            "package_key": "takumi-0.1.0-754e30c59449bbe259244a978d287978bf01aeb2",
             "kind": "normal",
             "features": [],
             "uses_default_features": true,
@@ -360,7 +360,7 @@
         "build_dependencies": [],
         "features": []
       },
-      "sekkei-0.1.1": {
+      "sekkei-0.1.1-d7e53a772d42594be70c8cbcdce5d75cab8b4ddb": {
         "runtime_dependencies": [
           {
             "name": "serde",
@@ -646,7 +646,7 @@
           "proc-macro"
         ]
       },
-      "takumi-0.1.0": {
+      "takumi-0.1.0-754e30c59449bbe259244a978d287978bf01aeb2": {
         "runtime_dependencies": [
           {
             "name": "indexmap",
@@ -662,7 +662,7 @@
           },
           {
             "name": "sekkei",
-            "package_key": "sekkei-0.1.1",
+            "package_key": "sekkei-0.1.1-d7e53a772d42594be70c8cbcdce5d75cab8b4ddb",
             "kind": "normal",
             "features": [],
             "uses_default_features": true,
@@ -1465,7 +1465,7 @@
     "ryu-1.0.23": {
       "edition": "2021"
     },
-    "sekkei-0.1.1": {
+    "sekkei-0.1.1-d7e53a772d42594be70c8cbcdce5d75cab8b4ddb": {
       "edition": "2024"
     },
     "serde-1.0.228": {
@@ -1490,7 +1490,7 @@
     "syn-2.0.117": {
       "edition": "2021"
     },
-    "takumi-0.1.0": {
+    "takumi-0.1.0-754e30c59449bbe259244a978d287978bf01aeb2": {
       "edition": "2024"
     },
     "tempfile-3.27.0": {
@@ -1526,8 +1526,8 @@
     }
   },
   "git_nar_sha256": {
-    "sekkei-0.1.1": "sha256-GmnVLwM+WsUVbdgpCVHKITtC02v9pbMegyQQYi2GQPM=",
-    "takumi-0.1.0": "sha256-9P3fD1YfPuw1dYg1DjkYWZAg2NfPDaKDYy2ZDgCAL64="
+    "sekkei-0.1.1-d7e53a772d42594be70c8cbcdce5d75cab8b4ddb": "sha256-GmnVLwM+WsUVbdgpCVHKITtC02v9pbMegyQQYi2GQPM=",
+    "takumi-0.1.0-754e30c59449bbe259244a978d287978bf01aeb2": "sha256-9P3fD1YfPuw1dYg1DjkYWZAg2NfPDaKDYy2ZDgCAL64="
   },
   "flake_metadata": {}
 }
