@@ -535,7 +535,7 @@ rec {
       };
       "openapi-forge" = rec {
         crateName = "openapi-forge";
-        version = "0.1.4";
+        version = "0.1.5";
         edition = "2024";
         src = lib.cleanSourceWith { filter = sourceFilter;  src = ./.; };
         libName = "openapi_forge";
