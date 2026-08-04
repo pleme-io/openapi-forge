@@ -4,7 +4,9 @@ use std::str::FromStr;
 use indexmap::IndexMap;
 
 use crate::error::ForgeError;
-use crate::types::{ref_name_from_path, OpenApiSpec, Operation, SchemaObject, SchemaOrRef, TypeInfo};
+use crate::types::{
+    OpenApiSpec, Operation, SchemaObject, SchemaOrRef, TypeInfo, ref_name_from_path,
+};
 
 /// The CRUD verb detected from an RPC-style operation path.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -44,9 +46,7 @@ impl FromStr for RpcCrudVerb {
             "update" => Ok(Self::Update),
             "delete" | "remove" => Ok(Self::Delete),
             "list" => Ok(Self::List),
-            _ => Err(ForgeError::InvalidInput(format!(
-                "unknown CRUD verb: {s}"
-            ))),
+            _ => Err(ForgeError::InvalidInput(format!("unknown CRUD verb: {s}"))),
         }
     }
 }
@@ -211,145 +211,146 @@ impl RpcCrudGrouper {
     #[must_use]
     #[allow(clippy::too_many_lines)]
     pub fn akeyless_patterns() -> Self {
-        Self::new().patterns(vec![
-            // --- Auth methods (Pattern A: auth-method-{verb}-{variant}) ---
-            RpcPattern::new(
-                RpcCrudVerb::Create,
-                "/auth-method-create-{resource}",
-                "auth_method_{0}",
-            ),
-            RpcPattern::new(
-                RpcCrudVerb::Update,
-                "/auth-method-update-{resource}",
-                "auth_method_{0}",
-            ),
-            // --- Auth methods (Pattern B: {verb}-auth-method-{variant}) ---
-            RpcPattern::new(
-                RpcCrudVerb::Create,
-                "/create-auth-method-{resource}",
-                "auth_method_{0}",
-            ),
-            RpcPattern::new(
-                RpcCrudVerb::Update,
-                "/update-auth-method-{resource}",
-                "auth_method_{0}",
-            ),
-            // Auth method shared read/delete (no variant)
-            RpcPattern::new(RpcCrudVerb::Read, "/get-auth-method", "auth_method"),
-            RpcPattern::new(RpcCrudVerb::Delete, "/delete-auth-method", "auth_method"),
-            RpcPattern::new(RpcCrudVerb::List, "/list-auth-methods", "auth_method"),
-            // --- Targets (Pattern A: target-{verb}-{variant}) ---
-            RpcPattern::new(
-                RpcCrudVerb::Create,
-                "/target-create-{resource}",
-                "target_{0}",
-            ),
-            RpcPattern::new(
-                RpcCrudVerb::Update,
-                "/target-update-{resource}",
-                "target_{0}",
-            ),
-            // --- Targets (Pattern B: {verb}-{variant}-target) ---
-            RpcPattern::new(
-                RpcCrudVerb::Create,
-                "/create-{resource}-target",
-                "target_{0}",
-            ),
-            RpcPattern::new(
-                RpcCrudVerb::Update,
-                "/update-{resource}-target",
-                "target_{0}",
-            ),
-            // Target shared read/delete
-            RpcPattern::new(RpcCrudVerb::Read, "/target-get", "target"),
-            RpcPattern::new(RpcCrudVerb::Delete, "/target-delete", "target"),
-            RpcPattern::new(RpcCrudVerb::List, "/list-targets", "target"),
-            // --- Dynamic secrets (Pattern A: dynamic-secret-{verb}-{variant}) ---
-            RpcPattern::new(
-                RpcCrudVerb::Create,
-                "/dynamic-secret-create-{resource}",
-                "dynamic_secret_{0}",
-            ),
-            RpcPattern::new(
-                RpcCrudVerb::Update,
-                "/dynamic-secret-update-{resource}",
-                "dynamic_secret_{0}",
-            ),
-            // --- Dynamic secrets (Pattern B: {verb}-dynamic-secret-{variant}) ---
-            RpcPattern::new(
-                RpcCrudVerb::Create,
-                "/create-dynamic-secret-{resource}",
-                "dynamic_secret_{0}",
-            ),
-            RpcPattern::new(
-                RpcCrudVerb::Update,
-                "/update-dynamic-secret-{resource}",
-                "dynamic_secret_{0}",
-            ),
-            // Dynamic secret shared read/delete
-            RpcPattern::new(RpcCrudVerb::Read, "/dynamic-secret-get", "dynamic_secret"),
-            RpcPattern::new(
-                RpcCrudVerb::Delete,
-                "/dynamic-secret-delete",
-                "dynamic_secret",
-            ),
-            RpcPattern::new(RpcCrudVerb::List, "/list-dynamic-secrets", "dynamic_secret"),
-            // --- Rotated secrets (Pattern A: rotated-secret-{verb}-{variant}) ---
-            RpcPattern::new(
-                RpcCrudVerb::Create,
-                "/rotated-secret-create-{resource}",
-                "rotated_secret_{0}",
-            ),
-            RpcPattern::new(
-                RpcCrudVerb::Update,
-                "/rotated-secret-update-{resource}",
-                "rotated_secret_{0}",
-            ),
-            // --- Rotated secrets (Pattern B: {verb}-rotated-secret-{variant}) ---
-            RpcPattern::new(
-                RpcCrudVerb::Create,
-                "/create-rotated-secret-{resource}",
-                "rotated_secret_{0}",
-            ),
-            RpcPattern::new(
-                RpcCrudVerb::Update,
-                "/update-rotated-secret-{resource}",
-                "rotated_secret_{0}",
-            ),
-            // Rotated secret shared read/delete
-            RpcPattern::new(RpcCrudVerb::Read, "/rotated-secret-get", "rotated_secret"),
-            RpcPattern::new(
-                RpcCrudVerb::Delete,
-                "/rotated-secret-delete",
-                "rotated_secret",
-            ),
-            RpcPattern::new(RpcCrudVerb::List, "/list-rotated-secrets", "rotated_secret"),
-            // --- Gateway producers: gateway-{verb}-producer-{variant} ---
-            RpcPattern::new(
-                RpcCrudVerb::Create,
-                "/gateway-create-producer-{resource}",
-                "gateway_producer_{0}",
-            ),
-            RpcPattern::new(
-                RpcCrudVerb::Update,
-                "/gateway-update-producer-{resource}",
-                "gateway_producer_{0}",
-            ),
-            RpcPattern::new(
-                RpcCrudVerb::Delete,
-                "/gateway-delete-producer-{resource}",
-                "gateway_producer_{0}",
-            ),
-            // --- Static secrets ---
-            RpcPattern::new(RpcCrudVerb::Create, "/create-secret", "static_secret"),
-            RpcPattern::new(RpcCrudVerb::Update, "/update-secret-val", "static_secret"),
-            RpcPattern::new(RpcCrudVerb::Read, "/get-secret-value", "static_secret"),
-            // --- Items (generic) ---
-            RpcPattern::new(RpcCrudVerb::Read, "/describe-item", "item"),
-            RpcPattern::new(RpcCrudVerb::Delete, "/delete-item", "item"),
-            RpcPattern::new(RpcCrudVerb::List, "/list-items", "item"),
-        ])
-        .patterns(Self::generic_patterns())
+        Self::new()
+            .patterns(vec![
+                // --- Auth methods (Pattern A: auth-method-{verb}-{variant}) ---
+                RpcPattern::new(
+                    RpcCrudVerb::Create,
+                    "/auth-method-create-{resource}",
+                    "auth_method_{0}",
+                ),
+                RpcPattern::new(
+                    RpcCrudVerb::Update,
+                    "/auth-method-update-{resource}",
+                    "auth_method_{0}",
+                ),
+                // --- Auth methods (Pattern B: {verb}-auth-method-{variant}) ---
+                RpcPattern::new(
+                    RpcCrudVerb::Create,
+                    "/create-auth-method-{resource}",
+                    "auth_method_{0}",
+                ),
+                RpcPattern::new(
+                    RpcCrudVerb::Update,
+                    "/update-auth-method-{resource}",
+                    "auth_method_{0}",
+                ),
+                // Auth method shared read/delete (no variant)
+                RpcPattern::new(RpcCrudVerb::Read, "/get-auth-method", "auth_method"),
+                RpcPattern::new(RpcCrudVerb::Delete, "/delete-auth-method", "auth_method"),
+                RpcPattern::new(RpcCrudVerb::List, "/list-auth-methods", "auth_method"),
+                // --- Targets (Pattern A: target-{verb}-{variant}) ---
+                RpcPattern::new(
+                    RpcCrudVerb::Create,
+                    "/target-create-{resource}",
+                    "target_{0}",
+                ),
+                RpcPattern::new(
+                    RpcCrudVerb::Update,
+                    "/target-update-{resource}",
+                    "target_{0}",
+                ),
+                // --- Targets (Pattern B: {verb}-{variant}-target) ---
+                RpcPattern::new(
+                    RpcCrudVerb::Create,
+                    "/create-{resource}-target",
+                    "target_{0}",
+                ),
+                RpcPattern::new(
+                    RpcCrudVerb::Update,
+                    "/update-{resource}-target",
+                    "target_{0}",
+                ),
+                // Target shared read/delete
+                RpcPattern::new(RpcCrudVerb::Read, "/target-get", "target"),
+                RpcPattern::new(RpcCrudVerb::Delete, "/target-delete", "target"),
+                RpcPattern::new(RpcCrudVerb::List, "/list-targets", "target"),
+                // --- Dynamic secrets (Pattern A: dynamic-secret-{verb}-{variant}) ---
+                RpcPattern::new(
+                    RpcCrudVerb::Create,
+                    "/dynamic-secret-create-{resource}",
+                    "dynamic_secret_{0}",
+                ),
+                RpcPattern::new(
+                    RpcCrudVerb::Update,
+                    "/dynamic-secret-update-{resource}",
+                    "dynamic_secret_{0}",
+                ),
+                // --- Dynamic secrets (Pattern B: {verb}-dynamic-secret-{variant}) ---
+                RpcPattern::new(
+                    RpcCrudVerb::Create,
+                    "/create-dynamic-secret-{resource}",
+                    "dynamic_secret_{0}",
+                ),
+                RpcPattern::new(
+                    RpcCrudVerb::Update,
+                    "/update-dynamic-secret-{resource}",
+                    "dynamic_secret_{0}",
+                ),
+                // Dynamic secret shared read/delete
+                RpcPattern::new(RpcCrudVerb::Read, "/dynamic-secret-get", "dynamic_secret"),
+                RpcPattern::new(
+                    RpcCrudVerb::Delete,
+                    "/dynamic-secret-delete",
+                    "dynamic_secret",
+                ),
+                RpcPattern::new(RpcCrudVerb::List, "/list-dynamic-secrets", "dynamic_secret"),
+                // --- Rotated secrets (Pattern A: rotated-secret-{verb}-{variant}) ---
+                RpcPattern::new(
+                    RpcCrudVerb::Create,
+                    "/rotated-secret-create-{resource}",
+                    "rotated_secret_{0}",
+                ),
+                RpcPattern::new(
+                    RpcCrudVerb::Update,
+                    "/rotated-secret-update-{resource}",
+                    "rotated_secret_{0}",
+                ),
+                // --- Rotated secrets (Pattern B: {verb}-rotated-secret-{variant}) ---
+                RpcPattern::new(
+                    RpcCrudVerb::Create,
+                    "/create-rotated-secret-{resource}",
+                    "rotated_secret_{0}",
+                ),
+                RpcPattern::new(
+                    RpcCrudVerb::Update,
+                    "/update-rotated-secret-{resource}",
+                    "rotated_secret_{0}",
+                ),
+                // Rotated secret shared read/delete
+                RpcPattern::new(RpcCrudVerb::Read, "/rotated-secret-get", "rotated_secret"),
+                RpcPattern::new(
+                    RpcCrudVerb::Delete,
+                    "/rotated-secret-delete",
+                    "rotated_secret",
+                ),
+                RpcPattern::new(RpcCrudVerb::List, "/list-rotated-secrets", "rotated_secret"),
+                // --- Gateway producers: gateway-{verb}-producer-{variant} ---
+                RpcPattern::new(
+                    RpcCrudVerb::Create,
+                    "/gateway-create-producer-{resource}",
+                    "gateway_producer_{0}",
+                ),
+                RpcPattern::new(
+                    RpcCrudVerb::Update,
+                    "/gateway-update-producer-{resource}",
+                    "gateway_producer_{0}",
+                ),
+                RpcPattern::new(
+                    RpcCrudVerb::Delete,
+                    "/gateway-delete-producer-{resource}",
+                    "gateway_producer_{0}",
+                ),
+                // --- Static secrets ---
+                RpcPattern::new(RpcCrudVerb::Create, "/create-secret", "static_secret"),
+                RpcPattern::new(RpcCrudVerb::Update, "/update-secret-val", "static_secret"),
+                RpcPattern::new(RpcCrudVerb::Read, "/get-secret-value", "static_secret"),
+                // --- Items (generic) ---
+                RpcPattern::new(RpcCrudVerb::Read, "/describe-item", "item"),
+                RpcPattern::new(RpcCrudVerb::Delete, "/delete-item", "item"),
+                RpcPattern::new(RpcCrudVerb::List, "/list-items", "item"),
+            ])
+            .patterns(Self::generic_patterns())
     }
 
     /// Group the given endpoints into CRUD groups using the configured patterns.
@@ -1749,11 +1750,7 @@ components:
         assert_eq!(
             type_info,
             TypeInfo::Enum {
-                values: vec![
-                    "read".to_string(),
-                    "write".to_string(),
-                    "admin".to_string()
-                ],
+                values: vec!["read".to_string(), "write".to_string(), "admin".to_string()],
                 underlying: Box::new(TypeInfo::String),
             }
         );
@@ -1923,7 +1920,9 @@ paths: {}
     #[test]
     fn diff_schemas_identical_schemas() {
         let spec = Spec::from_str(MINIMAL_SPEC).expect("parse");
-        let diff = spec.diff_schemas("CreateSecret", "CreateSecret").expect("diff");
+        let diff = spec
+            .diff_schemas("CreateSecret", "CreateSecret")
+            .expect("diff");
         assert!(diff.added.is_empty());
         assert!(diff.removed.is_empty());
         assert!(diff.changed.is_empty());
@@ -2103,7 +2102,10 @@ components:
     fn endpoint_response_schema_ref() {
         let spec = Spec::from_str(MINIMAL_SPEC).expect("parse");
         let ep = spec.endpoint_by_path("/create-secret").expect("found");
-        assert_eq!(ep.response_schema_ref.as_deref(), Some("CreateSecretOutput"));
+        assert_eq!(
+            ep.response_schema_ref.as_deref(),
+            Some("CreateSecretOutput")
+        );
     }
 
     #[test]
@@ -2227,8 +2229,14 @@ components:
 "#;
         let spec = Spec::from_str(yaml).expect("parse");
         let fields = spec.fields("Config").expect("fields");
-        let timeout = fields.iter().find(|f| f.name == "timeout").expect("timeout");
-        assert_eq!(timeout.description.as_deref(), Some("Request timeout in ms"));
+        let timeout = fields
+            .iter()
+            .find(|f| f.name == "timeout")
+            .expect("timeout");
+        assert_eq!(
+            timeout.description.as_deref(),
+            Some("Request timeout in ms")
+        );
         assert_eq!(timeout.default, Some(serde_json::json!(30000)));
         assert_eq!(timeout.format.as_deref(), Some("int32"));
     }
@@ -2339,10 +2347,7 @@ components:
         let spec = Spec::from_str(yaml).expect("parse");
         let groups = spec.group_by_crud_pattern();
         let has_custom = groups.iter().any(|g| g.base_name.contains("custom"));
-        assert!(
-            !has_custom,
-            "custom-action should not create a CRUD group"
-        );
+        assert!(!has_custom, "custom-action should not create a CRUD group");
         let has_item = groups.iter().any(|g| g.create.is_some());
         assert!(has_item);
     }
@@ -2404,7 +2409,10 @@ components:
 "#;
         let spec = Spec::from_str(yaml).expect("parse");
         let groups = spec.group_by_crud_pattern();
-        let widget = groups.iter().find(|g| g.base_name == "widget").expect("widget group");
+        let widget = groups
+            .iter()
+            .find(|g| g.base_name == "widget")
+            .expect("widget group");
         assert!(widget.create.is_some(), "create");
         assert!(widget.read.is_some(), "read");
         assert!(widget.update.is_some(), "update");
@@ -2444,7 +2452,10 @@ components:
 "#;
         let spec = Spec::from_str(yaml).expect("parse");
         let groups = spec.group_by_crud_pattern();
-        let user = groups.iter().find(|g| g.base_name == "user").expect("user group");
+        let user = groups
+            .iter()
+            .find(|g| g.base_name == "user")
+            .expect("user group");
         assert!(user.create.is_some(), "add- should map to create");
         assert!(user.delete.is_some(), "remove- should map to delete");
         assert!(user.read.is_some(), "describe- should map to read");
@@ -2498,14 +2509,8 @@ components:
     #[test]
     fn rpc_pattern_case_insensitive_match() {
         let pat = RpcPattern::new(RpcCrudVerb::Create, "/Create-{resource}", "{0}");
-        assert_eq!(
-            pat.try_match("/create-secret"),
-            Some("secret".to_string())
-        );
-        assert_eq!(
-            pat.try_match("/CREATE-SECRET"),
-            Some("secret".to_string())
-        );
+        assert_eq!(pat.try_match("/create-secret"), Some("secret".to_string()));
+        assert_eq!(pat.try_match("/CREATE-SECRET"), Some("secret".to_string()));
     }
 
     #[test]
@@ -2699,11 +2704,17 @@ components:
         let groups = grouper.group_spec(&spec);
 
         let auth = groups.iter().find(|g| g.base_name == "auth_method");
-        assert!(auth.is_some(), "should have auth_method group for list-auth-methods");
+        assert!(
+            auth.is_some(),
+            "should have auth_method group for list-auth-methods"
+        );
         assert!(auth.unwrap().list.is_some());
 
         let target = groups.iter().find(|g| g.base_name == "target");
-        assert!(target.is_some(), "should have target group for list-targets");
+        assert!(
+            target.is_some(),
+            "should have target group for list-targets"
+        );
         assert!(target.unwrap().list.is_some());
 
         let item = groups.iter().find(|g| g.base_name == "item");
@@ -2767,7 +2778,10 @@ components:
 "#;
         let spec = Spec::from_str(yaml).expect("parse");
         let groups = spec.group_by_crud_pattern();
-        assert!(!groups.is_empty(), "should still group by path when no operation_id");
+        assert!(
+            !groups.is_empty(),
+            "should still group by path when no operation_id"
+        );
         let has_create = groups.iter().any(|g| g.create.is_some());
         assert!(has_create);
     }
@@ -3116,17 +3130,17 @@ components:
     fn endpoints_request_and_response_refs_complete() {
         let spec = Spec::from_str(MINIMAL_SPEC).expect("parse");
         let ep_create = spec.endpoint_by_path("/create-secret").unwrap();
-        assert_eq!(ep_create.request_schema_ref.as_deref(), Some("CreateSecret"));
+        assert_eq!(
+            ep_create.request_schema_ref.as_deref(),
+            Some("CreateSecret")
+        );
         assert_eq!(
             ep_create.response_schema_ref.as_deref(),
             Some("CreateSecretOutput")
         );
 
         let ep_get = spec.endpoint_by_path("/get-secret-value").unwrap();
-        assert_eq!(
-            ep_get.request_schema_ref.as_deref(),
-            Some("GetSecretValue")
-        );
+        assert_eq!(ep_get.request_schema_ref.as_deref(), Some("GetSecretValue"));
         assert_eq!(
             ep_get.response_schema_ref.as_deref(),
             Some("GetSecretValueOutput")
@@ -3360,8 +3374,8 @@ components:
     #[test]
     fn forge_error_source_yaml() {
         use std::error::Error;
-        let yaml_err = serde_yaml_ng::from_str::<serde_json::Value>("{{bad")
-            .expect_err("should fail");
+        let yaml_err =
+            serde_yaml_ng::from_str::<serde_json::Value>("{{bad").expect_err("should fail");
         let err = ForgeError::Yaml(yaml_err);
         assert!(err.source().is_some());
     }
@@ -3369,8 +3383,8 @@ components:
     #[test]
     fn forge_error_source_json() {
         use std::error::Error;
-        let json_err = serde_json::from_str::<serde_json::Value>("not json")
-            .expect_err("should fail");
+        let json_err =
+            serde_json::from_str::<serde_json::Value>("not json").expect_err("should fail");
         let err = ForgeError::Json(json_err);
         assert!(err.source().is_some());
     }

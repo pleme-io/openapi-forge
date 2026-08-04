@@ -46,13 +46,16 @@ mod tests {
             msg.contains("failed to read spec file"),
             "IO error display should include context prefix, got: {msg}"
         );
-        assert!(msg.contains("gone"), "IO error display should preserve inner message");
+        assert!(
+            msg.contains("gone"),
+            "IO error display should preserve inner message"
+        );
     }
 
     #[test]
     fn display_yaml_error() {
-        let yaml_err = serde_yaml_ng::from_str::<serde_json::Value>("{{bad")
-            .expect_err("should fail");
+        let yaml_err =
+            serde_yaml_ng::from_str::<serde_json::Value>("{{bad").expect_err("should fail");
         let err = ForgeError::Yaml(yaml_err);
         let msg = err.to_string();
         assert!(
@@ -63,8 +66,8 @@ mod tests {
 
     #[test]
     fn display_json_error() {
-        let json_err = serde_json::from_str::<serde_json::Value>("not json")
-            .expect_err("should fail");
+        let json_err =
+            serde_json::from_str::<serde_json::Value>("not json").expect_err("should fail");
         let err = ForgeError::Json(json_err);
         let msg = err.to_string();
         assert!(
@@ -106,16 +109,16 @@ mod tests {
 
     #[test]
     fn from_yaml_error() {
-        let yaml_err = serde_yaml_ng::from_str::<serde_json::Value>("{{bad")
-            .expect_err("should fail");
+        let yaml_err =
+            serde_yaml_ng::from_str::<serde_json::Value>("{{bad").expect_err("should fail");
         let forge_err: ForgeError = yaml_err.into();
         assert!(matches!(forge_err, ForgeError::Yaml(_)));
     }
 
     #[test]
     fn from_json_error() {
-        let json_err = serde_json::from_str::<serde_json::Value>("not json")
-            .expect_err("should fail");
+        let json_err =
+            serde_json::from_str::<serde_json::Value>("not json").expect_err("should fail");
         let forge_err: ForgeError = json_err.into();
         assert!(matches!(forge_err, ForgeError::Json(_)));
     }
