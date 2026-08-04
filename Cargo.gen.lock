@@ -1,8 +1,8 @@
 {
   "schema_version": 2,
-  "cargo_lock_sha256": "bd3d616bf19cdf646379248bc79e8232b76b107701dd3117473fd84a23bc04a5",
+  "cargo_lock_sha256": "0916e058cce89f48bc33ab08b5400c278d1bb0bbacdfd4d6dd380eb33bbdcc39",
   "manifest_sha256": {
-    "Cargo.toml": "6ee6ed32cda454ceec6ad46ce8530150f017c272d883e3ba27a2154b0b268dba"
+    "Cargo.toml": "bb0ad5aaaca856313428c07e62ee2cd15fab435e932a02e6bbc2ab138c933501"
   },
   "target_resolves": {
     "base": {
@@ -240,7 +240,7 @@
           "std"
         ]
       },
-      "openapi-forge-0.1.5": {
+      "openapi-forge-0.1.6": {
         "runtime_dependencies": [
           {
             "name": "indexmap",
@@ -1489,7 +1489,7 @@
     "once_cell-1.21.4": {
       "edition": "2021"
     },
-    "openapi-forge-0.1.5": {
+    "openapi-forge-0.1.6": {
       "edition": "2024",
       "lib_target": {
         "name": "openapi_forge",
