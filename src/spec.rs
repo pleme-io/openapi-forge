@@ -531,7 +531,7 @@ impl Spec {
         let raw: OpenApiSpec = if content.trim_start().starts_with('{') {
             serde_json::from_str(content)?
         } else {
-            serde_yaml_ng::from_str(content)?
+            serde_norway::from_str(content)?
         };
 
         Ok(Self { raw })
@@ -3375,7 +3375,7 @@ components:
     fn forge_error_source_yaml() {
         use std::error::Error;
         let yaml_err =
-            serde_yaml_ng::from_str::<serde_json::Value>("{{bad").expect_err("should fail");
+            serde_norway::from_str::<serde_json::Value>("{{bad").expect_err("should fail");
         let err = ForgeError::Yaml(yaml_err);
         assert!(err.source().is_some());
     }

@@ -10,7 +10,7 @@ pub enum ForgeError {
 
     /// The spec content could not be parsed as valid YAML.
     #[error("failed to parse YAML: {0}")]
-    Yaml(#[from] serde_yaml_ng::Error),
+    Yaml(#[from] serde_norway::Error),
 
     /// The spec content could not be parsed as valid JSON.
     #[error("failed to parse JSON: {0}")]
@@ -55,7 +55,7 @@ mod tests {
     #[test]
     fn display_yaml_error() {
         let yaml_err =
-            serde_yaml_ng::from_str::<serde_json::Value>("{{bad").expect_err("should fail");
+            serde_norway::from_str::<serde_json::Value>("{{bad").expect_err("should fail");
         let err = ForgeError::Yaml(yaml_err);
         let msg = err.to_string();
         assert!(
@@ -110,7 +110,7 @@ mod tests {
     #[test]
     fn from_yaml_error() {
         let yaml_err =
-            serde_yaml_ng::from_str::<serde_json::Value>("{{bad").expect_err("should fail");
+            serde_norway::from_str::<serde_json::Value>("{{bad").expect_err("should fail");
         let forge_err: ForgeError = yaml_err.into();
         assert!(matches!(forge_err, ForgeError::Yaml(_)));
     }
