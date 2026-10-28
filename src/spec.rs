@@ -1728,13 +1728,13 @@ components:
     fn type_info_enum_variant_from_takumi() {
         // Verify that takumi::FieldType::Enum is available through our TypeInfo alias
         let enum_type = TypeInfo::Enum {
-            values: vec!["a".to_string(), "b".to_string()],
+            values: vec!["a".into(), "b".into()],
             underlying: Box::new(TypeInfo::String),
         };
         assert_eq!(
             enum_type,
             TypeInfo::Enum {
-                values: vec!["a".to_string(), "b".to_string()],
+                values: vec!["a".into(), "b".into()],
                 underlying: Box::new(TypeInfo::String),
             }
         );
@@ -1750,7 +1750,7 @@ components:
         assert_eq!(
             type_info,
             TypeInfo::Enum {
-                values: vec!["read".to_string(), "write".to_string(), "admin".to_string()],
+                values: vec!["read".into(), "write".into(), "admin".into()],
                 underlying: Box::new(TypeInfo::String),
             }
         );
